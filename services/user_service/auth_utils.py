@@ -5,12 +5,11 @@ JWT token generation/validation and password hashing using industry-standard lib
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
 from uuid import UUID
 
-from jose import JWTError, jwt
 import bcrypt
 import structlog
+from jose import JWTError, jwt
 
 from shared.config import settings
 
@@ -24,41 +23,41 @@ class PasswordHasher:
     def hash_password(password: str) -> str:
         """
         Hash a password using bcrypt.
-        
+
         BCrypt has a maximum password length of 72 bytes. We truncate to ensure
         compatibility across all bcrypt implementations.
-        
+
         Args:
             password: Plain text password
-            
+
         Returns:
             str: Hashed password
         """
         # Truncate password to 72 bytes for bcrypt compatibility
         password_bytes = password.encode('utf-8')[:72]
-        
+
         # Generate salt and hash
         salt = bcrypt.gensalt()
         hashed = bcrypt.hashpw(password_bytes, salt)
-        
+
         return hashed.decode('utf-8')
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """
         Verify a password against its hash.
-        
+
         Args:
             plain_password: Plain text password
             hashed_password: Hashed password
-            
+
         Returns:
             bool: True if password matches
         """
         # Truncate password to 72 bytes for bcrypt compatibility
         password_bytes = plain_password.encode('utf-8')[:72]
         hashed_bytes = hashed_password.encode('utf-8')
-        
+
         return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
@@ -70,19 +69,19 @@ class JWTManager:
         user_id: UUID,
         email: str,
         roles: list[str],
-        user_type: Optional[str] = None,
-        expires_delta: Optional[timedelta] = None,
+        user_type: str | None = None,
+        expires_delta: timedelta | None = None,
     ) -> str:
         """
         Create JWT access token with role-based expiration.
-        
+
         Args:
             user_id: User UUID
             email: User email
             roles: User roles
             user_type: User type (student, lecturer, staff, admin)
             expires_delta: Token expiration time (overrides role-based default)
-            
+
         Returns:
             str: JWT token
         """
@@ -94,7 +93,7 @@ class JWTManager:
                 "staff": 90,  # 1.5 hours
                 "admin": 30,  # 30 minutes (shorter for security)
             }
-            
+
             if user_type and user_type.lower() in role_expiry:
                 expires_delta = timedelta(minutes=role_expiry[user_type.lower()])
             else:
@@ -121,10 +120,10 @@ class JWTManager:
     def create_refresh_token(user_id: UUID) -> str:
         """
         Create JWT refresh token.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             str: Refresh token
         """
@@ -147,19 +146,18 @@ class JWTManager:
     def decode_token(token: str) -> dict:
         """
         Decode and validate JWT token.
-        
+
         Args:
             token: JWT token string
-            
+
         Returns:
             dict: Token payload
-            
+
         Raises:
             JWTError: If token is invalid or expired
         """
         try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-            return payload
+            return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         except JWTError as e:
             logger.warning("Token validation failed", error=str(e))
             raise TokenError(f"Invalid token: {str(e)}")
@@ -168,13 +166,13 @@ class JWTManager:
     def get_user_id_from_token(token: str) -> UUID:
         """
         Extract user ID from token.
-        
+
         Args:
             token: JWT token
-            
+
         Returns:
             UUID: User ID
-            
+
         Raises:
             TokenError: If token is invalid
         """
@@ -190,11 +188,11 @@ class JWTManager:
     def verify_token_type(token: str, expected_type: str) -> bool:
         """
         Verify token type (access vs refresh).
-        
+
         Args:
             token: JWT token
             expected_type: Expected token type
-            
+
         Returns:
             bool: True if token type matches
         """
@@ -206,7 +204,6 @@ class JWTManager:
 class TokenError(Exception):
     """Raised when token validation fails."""
 
-    pass
 
 
 # Convenience instances

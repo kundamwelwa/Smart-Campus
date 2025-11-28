@@ -4,17 +4,16 @@ User Service Dependencies
 FastAPI dependencies for authentication and authorization.
 """
 
-from typing import Optional
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database import get_db
-from services.user_service.repository import UserRepository
-from services.user_service.auth_utils import jwt_manager, TokenError
+from services.user_service.auth_utils import TokenError, jwt_manager
 from services.user_service.models import UserModel
+from services.user_service.repository import UserRepository
+from shared.database import get_db
 
 logger = structlog.get_logger(__name__)
 
@@ -28,14 +27,14 @@ async def get_current_user(
 ) -> UserModel:
     """
     Dependency to get current authenticated user from JWT token.
-    
+
     Args:
         credentials: HTTP bearer credentials
         db: Database session
-        
+
     Returns:
         UserModel: Authenticated user
-        
+
     Raises:
         HTTPException: If authentication fails
     """
@@ -79,13 +78,13 @@ async def get_current_active_user(
 ) -> UserModel:
     """
     Dependency to ensure user is active.
-    
+
     Args:
         current_user: Current user from token
-        
+
     Returns:
         UserModel: Active user
-        
+
     Raises:
         HTTPException: If user is inactive
     """
@@ -97,13 +96,13 @@ async def get_current_active_user(
 async def require_admin(current_user: UserModel = Depends(get_current_user)) -> UserModel:
     """
     Dependency to require admin privileges.
-    
+
     Args:
         current_user: Current user
-        
+
     Returns:
         UserModel: Admin user
-        
+
     Raises:
         HTTPException: If user is not an admin
     """

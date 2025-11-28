@@ -5,18 +5,17 @@ Provides authentication, registration, and token management.
 """
 
 from datetime import date, datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, status
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from shared.database import get_db
-from services.user_service.repository import UserRepository, StudentRepository
 from services.user_service.auth_utils import jwt_manager
 from services.user_service.models import UserType
+from services.user_service.repository import StudentRepository, UserRepository
+from shared.database import get_db
 
 logger = structlog.get_logger(__name__)
 
@@ -31,16 +30,16 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=100)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    middle_name: Optional[str] = Field(default=None, max_length=100)
+    middle_name: str | None = Field(default=None, max_length=100)
     user_type: str = Field(..., description="student, lecturer, staff, admin, guest")
 
     # Student-specific fields
-    student_id: Optional[str] = Field(default=None)
-    major: Optional[str] = Field(default=None)
+    student_id: str | None = Field(default=None)
+    major: str | None = Field(default=None)
 
     # Lecturer-specific fields
-    employee_id: Optional[str] = Field(default=None)
-    department: Optional[str] = Field(default=None)
+    employee_id: str | None = Field(default=None)
+    department: str | None = Field(default=None)
 
 
 class LoginRequest(BaseModel):
@@ -80,16 +79,16 @@ async def register(
 ) -> TokenResponse:
     """
     Register a new user.
-    
+
     Creates user account and issues authentication tokens.
-    
+
     Args:
         request: Registration request
         db: Database session
-        
+
     Returns:
         TokenResponse: Authentication tokens
-        
+
     Raises:
         HTTPException: If registration fails
     """
@@ -169,14 +168,14 @@ async def register(
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     """
     Authenticate user and issue tokens.
-    
+
     Args:
         request: Login request
         db: Database session
-        
+
     Returns:
         TokenResponse: Authentication tokens
-        
+
     Raises:
         HTTPException: If authentication fails
     """
@@ -228,14 +227,14 @@ async def refresh_access_token(
 ) -> TokenResponse:
     """
     Refresh access token using refresh token.
-    
+
     Args:
         refresh_token: Refresh token
         db: Database session
-        
+
     Returns:
         TokenResponse: New tokens
-        
+
     Raises:
         HTTPException: If refresh token is invalid
     """

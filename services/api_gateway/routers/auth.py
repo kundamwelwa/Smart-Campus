@@ -6,22 +6,19 @@ Proxies requests to User Service.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, status, Request
-from pydantic import BaseModel, EmailStr, Field
 import httpx
 import structlog
-
-from shared.config import settings
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
 # User Service URL
-USER_SERVICE_URL = f"http://localhost:8001/api/v1"
+USER_SERVICE_URL = "http://localhost:8001/api/v1"
 
 
 # Request/Response Models
@@ -32,16 +29,16 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=100)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    middle_name: Optional[str] = Field(default=None, max_length=100)
+    middle_name: str | None = Field(default=None, max_length=100)
     user_type: str = Field(..., description="student, lecturer, staff, admin")
-    
+
     # Student-specific fields
-    student_id: Optional[str] = Field(default=None)
-    major: Optional[str] = Field(default=None)
-    
+    student_id: str | None = Field(default=None)
+    major: str | None = Field(default=None)
+
     # Lecturer-specific fields
-    employee_id: Optional[str] = Field(default=None)
-    department: Optional[str] = Field(default=None)
+    employee_id: str | None = Field(default=None)
+    department: str | None = Field(default=None)
 
 
 class LoginRequest(BaseModel):
@@ -83,15 +80,15 @@ class LogoutRequest(BaseModel):
 async def register(request: RegisterRequest) -> TokenResponse:
     """
     Register a new user.
-    
+
     Proxies request to User Service.
-    
+
     Args:
         request: Registration request
-        
+
     Returns:
         TokenResponse: Authentication tokens
-        
+
     Raises:
         HTTPException: If registration fails
     """
@@ -104,23 +101,22 @@ async def register(request: RegisterRequest) -> TokenResponse:
                 json=request.model_dump(),
                 timeout=30.0
             )
-            
+
             if response.status_code == 201:
                 logger.info("User registered successfully", email=request.email)
                 return TokenResponse(**response.json())
-            else:
-                # Try to parse error from response
-                try:
-                    error_data = response.json()
-                    error_detail = error_data.get("detail", "Registration failed")
-                except:
-                    error_detail = f"Registration failed: {response.text[:200]}"
-                
-                logger.error("Registration failed", email=request.email, status=response.status_code, error=error_detail)
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=error_detail
-                )
+            # Try to parse error from response
+            try:
+                error_data = response.json()
+                error_detail = error_data.get("detail", "Registration failed")
+            except Exception:
+                error_detail = f"Registration failed: {response.text[:200]}"
+
+            logger.error("Registration failed", email=request.email, status=response.status_code, error=error_detail)
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=error_detail
+            )
     except httpx.RequestError as e:
         logger.error("Failed to connect to User Service", error=str(e))
         raise HTTPException(
@@ -141,15 +137,15 @@ async def register(request: RegisterRequest) -> TokenResponse:
 async def login(request: LoginRequest) -> TokenResponse:
     """
     Authenticate user and issue tokens.
-    
+
     Proxies request to User Service.
-    
+
     Args:
         request: Login request
-        
+
     Returns:
         TokenResponse: Access and refresh tokens
-        
+
     Raises:
         HTTPException: If authentication fails
     """
@@ -162,23 +158,22 @@ async def login(request: LoginRequest) -> TokenResponse:
                 json=request.model_dump(),
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 logger.info("Login successful", email=request.email)
                 return TokenResponse(**response.json())
-            else:
-                # Try to parse error from response
-                try:
-                    error_data = response.json()
-                    error_detail = error_data.get("detail", "Authentication failed")
-                except:
-                    error_detail = f"Authentication failed: {response.text[:200]}"
-                
-                logger.error("Login failed", email=request.email, status=response.status_code, error=error_detail)
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=error_detail
-                )
+            # Try to parse error from response
+            try:
+                error_data = response.json()
+                error_detail = error_data.get("detail", "Authentication failed")
+            except Exception:
+                error_detail = f"Authentication failed: {response.text[:200]}"
+
+            logger.error("Login failed", email=request.email, status=response.status_code, error=error_detail)
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=error_detail
+            )
     except httpx.RequestError as e:
         logger.error("Failed to connect to User Service", error=str(e))
         raise HTTPException(
@@ -199,15 +194,11 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
     """
     Refresh access token using refresh token.
-    
+
     Proxies to User Service.
     """
     logger.info("Token refresh attempt")
@@ -219,20 +210,19 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
                 json={"refresh_token": request.refresh_token},
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 logger.info("Token refreshed successfully")
                 return TokenResponse(**response.json())
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", "Token refresh failed")
-                except:
-                    detail = f"Token refresh failed: {response.text[:200]}"
-                
-                logger.error("Token refresh failed", status=response.status_code, error=detail)
-                raise HTTPException(status_code=response.status_code, detail=detail)
-                
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", "Token refresh failed")
+            except Exception:
+                detail = f"Token refresh failed: {response.text[:200]}"
+
+            logger.error("Token refresh failed", status=response.status_code, error=detail)
+            raise HTTPException(status_code=response.status_code, detail=detail)
+
     except httpx.RequestError as e:
         logger.error("Failed to connect to User Service", error=str(e))
         raise HTTPException(
@@ -253,7 +243,7 @@ async def refresh_token(request: RefreshTokenRequest) -> TokenResponse:
 async def logout(payload: LogoutRequest) -> dict[str, str]:
     """
     Logout user and invalidate tokens.
-    
+
     Returns:
         dict: Logout confirmation
     """
@@ -268,10 +258,10 @@ async def logout(payload: LogoutRequest) -> dict[str, str]:
 async def get_current_user() -> UserResponse:
     """
     Get current authenticated user information.
-    
+
     Returns:
         UserResponse: Current user data
-        
+
     Raises:
         HTTPException: If not authenticated
     """

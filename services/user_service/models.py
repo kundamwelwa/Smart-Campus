@@ -4,14 +4,14 @@ User Service Database Models
 SQLAlchemy ORM models for user data persistence.
 """
 
-from datetime import datetime, date
-from typing import Optional
+import enum
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, Boolean, Integer, Float, DateTime, Date, JSON, Enum as SQLEnum
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
-import enum
 
 from shared.database.postgres import Base
 
@@ -29,7 +29,7 @@ class UserType(str, enum.Enum):
 class UserModel(Base):
     """
     User database model.
-    
+
     Stores core user information and authentication credentials.
     """
 
@@ -42,7 +42,7 @@ class UserModel(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    middle_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    middle_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Authentication
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -66,7 +66,7 @@ class UserModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Privacy & GDPR
     is_pseudonymized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -85,7 +85,7 @@ class UserModel(Base):
 class StudentModel(Base):
     """
     Student-specific data model.
-    
+
     Extends user data with student-specific fields.
     """
 
@@ -98,9 +98,9 @@ class StudentModel(Base):
 
     student_id: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     enrollment_date: Mapped[date] = mapped_column(Date, nullable=False)
-    expected_graduation_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    major: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    minor: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    expected_graduation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    major: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    minor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     gpa: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     credits_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     academic_standing: Mapped[str] = mapped_column(String(20), default="good", nullable=False)
@@ -124,7 +124,7 @@ class LecturerModel(Base):
     employee_id: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     department: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(100), default="Lecturer", nullable=False)
-    office_location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    office_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     specialization: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     tenure_status: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     hire_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -149,7 +149,7 @@ class StaffModel(Base):
     employee_id: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     department: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     job_title: Mapped[str] = mapped_column(String(100), nullable=False)
-    office_location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    office_location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     hire_date: Mapped[date] = mapped_column(Date, nullable=False)
     clearance_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 

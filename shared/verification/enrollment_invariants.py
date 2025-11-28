@@ -12,8 +12,8 @@ Critical Invariant:
 with the same seat allocation."
 """
 
-from datetime import datetime, time
 from dataclasses import dataclass
+from datetime import datetime, time
 from enum import Enum
 
 import structlog

@@ -2,46 +2,45 @@
 Lecturer-specific endpoints for course and student management.
 """
 
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-import structlog
-
-from shared.database import get_db
-from shared.config import settings
-from services.academic_service.models import SectionModel, CourseModel, EnrollmentModel
 import httpx
+import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.academic_service.models import CourseModel, EnrollmentModel, SectionModel
+from shared.config import settings
+from shared.database import get_db
 
 router = APIRouter(prefix="/lecturer", tags=["lecturer"])
 logger = structlog.get_logger(__name__)
 
 
-async def get_current_lecturer_id(authorization: Optional[str] = Header(None)) -> UUID:
+async def get_current_lecturer_id(authorization: str | None = Header(None)) -> UUID:
     """Extract lecturer ID from JWT token."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
-    
+
     try:
         from jose import jwt
+
         from shared.config import settings
-        
+
         # Extract token
         token = authorization.replace("Bearer ", "")
-        
+
         # Decode JWT
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-        user_id = UUID(payload.get("sub"))
-        
+        return UUID(payload.get("sub"))
+
         # Note: user_type is not in JWT payload, so we verify via user service
         # For now, we'll just verify JWT is valid and trust the API Gateway
         # TODO: Add proper lecturer verification via user service API
-        
-        return user_id
-        
+
+
     except Exception as e:
         logger.error("JWT validation failed", error=str(e))
         raise HTTPException(status_code=401, detail="Invalid authentication token")
@@ -54,7 +53,7 @@ async def get_lecturer_sections(
 ):
     """
     Get all sections taught by the current lecturer.
-    
+
     Returns:
         List of sections with enrollment information
     """
@@ -65,7 +64,7 @@ async def get_lecturer_sections(
             .join(CourseModel, SectionModel.course_id == CourseModel.id)
             .where(SectionModel.instructor_id == lecturer_id)
         )
-        
+
         result = await db.execute(stmt)
         rows = result.all()
 
@@ -105,7 +104,7 @@ async def get_lecturer_assessments(
 ):
     """
     Get all assessments for courses taught by the lecturer.
-    
+
     Returns:
         List of assessments with grading status
     """
@@ -116,7 +115,7 @@ async def get_lecturer_assessments(
 
 @router.get("/students")
 async def get_lecturer_students(
-    section_id: Optional[UUID] = None,
+    section_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     lecturer_id: UUID = Depends(get_current_lecturer_id),
 ):
@@ -159,7 +158,7 @@ async def get_lecturer_students(
         rows = result.all()
 
         # Fetch real student profiles from User Service (one call per unique student)
-        student_profiles: Dict[str, Dict[str, Any]] = {}
+        student_profiles: dict[str, dict[str, Any]] = {}
         async with httpx.AsyncClient(timeout=5.0) as client:
             for enrollment, _, _ in rows:
                 student_id_str = str(enrollment.student_id)

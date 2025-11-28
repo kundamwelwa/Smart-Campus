@@ -7,7 +7,7 @@ SQLAlchemy models for rooms, facilities, and bookings.
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, Boolean, Integer, Float, DateTime, Text, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,7 +27,7 @@ class FacilityModel(Base):
     is_operational: Mapped[bool] = mapped_column(Boolean, default=True)
     current_temperature: Mapped[float] = mapped_column(Float, default=22.0)
     current_energy_usage: Mapped[float] = mapped_column(Float, default=0.0)
-    
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -60,7 +60,7 @@ class RoomModel(Base):
     # Availability
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     is_bookable: Mapped[bool] = mapped_column(Boolean, default=True)
-    
+
     # Environmental
     temperature: Mapped[float] = mapped_column(Float, default=22.0)
     current_occupancy: Mapped[int] = mapped_column(Integer, default=0)

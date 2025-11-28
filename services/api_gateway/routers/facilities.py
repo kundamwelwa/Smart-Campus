@@ -2,15 +2,11 @@
 Facilities endpoint proxies.
 """
 
-from typing import Optional
 from uuid import UUID
 
-from typing import Optional
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Header, Body, Request, status
 import httpx
 import structlog
+from fastapi import APIRouter, Body, Header, HTTPException, Request, status
 
 from shared.config import settings
 
@@ -20,10 +16,10 @@ logger = structlog.get_logger(__name__)
 
 @router.get("/rooms")
 async def list_rooms(
-    facility_id: Optional[str] = None,
-    is_available: Optional[bool] = None,
-    min_capacity: Optional[int] = None,
-    authorization: Optional[str] = Header(None),
+    facility_id: str | None = None,
+    is_available: bool | None = None,
+    min_capacity: int | None = None,
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for rooms list."""
     try:
@@ -60,7 +56,7 @@ async def list_rooms(
 
 @router.get("/rooms/facilities")
 async def list_facilities(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for facilities list."""
     try:
@@ -75,13 +71,12 @@ async def list_facilities(
             )
             if response.status_code == 200:
                 return response.json()
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", f"Failed to fetch facilities: {response.status_code}")
-                except:
-                    detail = f"Failed to fetch facilities: {response.text[:200]}"
-                raise HTTPException(status_code=response.status_code, detail=detail)
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", f"Failed to fetch facilities: {response.status_code}")
+            except Exception:
+                detail = f"Failed to fetch facilities: {response.text[:200]}"
+            raise HTTPException(status_code=response.status_code, detail=detail)
 
     except httpx.RequestError as e:
         logger.error("Failed to proxy facilities list", error=str(e))
@@ -96,7 +91,7 @@ async def list_facilities(
 @router.post("/rooms/facilities", status_code=status.HTTP_201_CREATED)
 async def create_facility(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for creating facility."""
     try:
@@ -129,7 +124,7 @@ async def create_facility(
 async def update_facility(
     facility_id: UUID,
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for updating facility."""
     try:
@@ -161,7 +156,7 @@ async def update_facility(
 @router.delete("/rooms/facilities/{facility_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_facility(
     facility_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for deleting facility."""
     try:
@@ -175,7 +170,7 @@ async def delete_facility(
                 headers=headers,
             )
             response.raise_for_status()
-            return None
+            return
 
     except httpx.RequestError as e:
         logger.error("Failed to proxy facility deletion", error=str(e))
@@ -190,7 +185,7 @@ async def delete_facility(
 @router.post("/rooms", status_code=status.HTTP_201_CREATED)
 async def create_room(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for creating room."""
     try:
@@ -223,7 +218,7 @@ async def create_room(
 async def update_room(
     room_id: UUID,
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for updating room."""
     try:
@@ -255,7 +250,7 @@ async def update_room(
 @router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_room(
     room_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for deleting room."""
     try:
@@ -269,7 +264,7 @@ async def delete_room(
                 headers=headers,
             )
             response.raise_for_status()
-            return None
+            return
 
     except httpx.RequestError as e:
         logger.error("Failed to proxy room deletion", error=str(e))
@@ -284,7 +279,7 @@ async def delete_room(
 @router.post("/bookings")
 async def create_booking(
     booking_data: dict = Body(...),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Facility Service for creating room bookings."""
     try:

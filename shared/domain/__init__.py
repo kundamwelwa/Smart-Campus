@@ -16,37 +16,37 @@ Composition Relationships:
 - EventStream uses Event (association)
 """
 
+from shared.domain.academic import Assessment, Course, Grade, Section, Syllabus
 from shared.domain.entities import (
     AbstractEntity,
-    VersionedEntity,
-    AuditableEntity,
-    Person,
-    Student,
-    Lecturer,
-    Staff,
-    Guest,
     Admin,
+    AuditableEntity,
+    Guest,
+    Lecturer,
+    Person,
+    Staff,
+    Student,
+    VersionedEntity,
 )
-from shared.domain.academic import Course, Section, Syllabus, Assessment, Grade
-from shared.domain.facilities import Facility, Room, Resource, Sensor, Actuator, Booking
-from shared.domain.security import (
-    Credential,
-    PasswordCredential,
-    OAuthCredential,
-    CertificateCredential,
-    AuthToken,
-    Role,
-    Permission,
-)
+from shared.domain.facilities import Actuator, Booking, Facility, Resource, Room, Sensor
 from shared.domain.scheduler import (
-    Constraint,
+    BalancedWorkloadConstraint,
     CapacityConstraint,
-    TimeConflictConstraint,
+    Constraint,
     InstructorAvailabilityConstraint,
     RoomPreferenceConstraint,
-    BalancedWorkloadConstraint,
+    TimeConflictConstraint,
     Timetable,
     TimetableSnapshot,
+)
+from shared.domain.security import (
+    AuthToken,
+    CertificateCredential,
+    Credential,
+    OAuthCredential,
+    PasswordCredential,
+    Permission,
+    Role,
 )
 
 __all__ = [

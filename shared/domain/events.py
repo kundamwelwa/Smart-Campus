@@ -6,15 +6,14 @@ for critical subsystems like enrollment. Provides complete audit trail and
 time-travel capabilities.
 """
 
-import json
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, Type
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict
 import structlog
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -56,7 +55,7 @@ class EventType(str, Enum):
 class DomainEvent(BaseModel, ABC):
     """
     Abstract base class for all domain events.
-    
+
     Events are immutable records of things that have happened in the system.
     They form the source of truth for event sourcing.
     """
@@ -73,14 +72,14 @@ class DomainEvent(BaseModel, ABC):
     )
 
     # Actor information
-    actor_id: Optional[UUID] = Field(default=None, description="Who caused this event")
+    actor_id: UUID | None = Field(default=None, description="Who caused this event")
     actor_type: str = Field(default="user", description="Type of actor")
 
     # Causality
-    correlation_id: Optional[str] = Field(
+    correlation_id: str | None = Field(
         default=None, description="Correlation ID for tracking related events"
     )
-    causation_id: Optional[UUID] = Field(
+    causation_id: UUID | None = Field(
         default=None, description="ID of event that caused this event"
     )
 
@@ -91,11 +90,10 @@ class DomainEvent(BaseModel, ABC):
     def get_payload(self) -> dict[str, Any]:
         """
         Get event-specific payload data.
-        
+
         Returns:
             Dictionary with event data
         """
-        pass
 
     def to_dict(self) -> dict[str, Any]:
         """Convert event to dictionary for storage."""
@@ -150,7 +148,7 @@ class EnrollmentDroppedEvent(DomainEvent):
     student_id: UUID = Field(...)
     section_id: UUID = Field(...)
     dropped_at: datetime = Field(default_factory=datetime.utcnow)
-    reason: Optional[str] = Field(default=None)
+    reason: str | None = Field(default=None)
 
     def get_payload(self) -> dict[str, Any]:
         """Get event payload."""
@@ -195,7 +193,7 @@ class GradeAssignedEvent(DomainEvent):
 class EventStore:
     """
     Event store for persisting and retrieving domain events.
-    
+
     Provides append-only storage with querying capabilities.
     """
 
@@ -208,7 +206,7 @@ class EventStore:
     async def append(self, event: DomainEvent) -> None:
         """
         Append an event to the store.
-        
+
         Args:
             event: Domain event to append
         """
@@ -236,11 +234,11 @@ class EventStore:
     ) -> list[DomainEvent]:
         """
         Get all events for a specific aggregate.
-        
+
         Args:
             aggregate_id: Aggregate ID
             from_version: Starting version (0 = all events)
-            
+
         Returns:
             List of events for the aggregate
         """
@@ -266,10 +264,10 @@ class EventStore:
     def get_current_version(self, aggregate_id: UUID) -> int:
         """
         Get current version of an aggregate.
-        
+
         Args:
             aggregate_id: Aggregate ID
-            
+
         Returns:
             int: Current version (0 if no events)
         """
@@ -280,7 +278,7 @@ class EventStore:
 class Snapshot(BaseModel):
     """
     Snapshot of aggregate state at a specific version.
-    
+
     Snapshots optimize event replay by storing periodic state checkpoints.
     """
 
@@ -294,14 +292,14 @@ class Snapshot(BaseModel):
 class SnapshotStore:
     """
     Storage for aggregate snapshots.
-    
+
     Reduces replay time by storing periodic state checkpoints.
     """
 
     def __init__(self, snapshot_interval: int = 10):
         """
         Initialize snapshot store.
-        
+
         Args:
             snapshot_interval: Create snapshot every N events
         """
@@ -311,7 +309,7 @@ class SnapshotStore:
     async def save_snapshot(self, snapshot: Snapshot) -> None:
         """
         Save a snapshot.
-        
+
         Args:
             snapshot: Snapshot to save
         """
@@ -322,13 +320,13 @@ class SnapshotStore:
             version=snapshot.version,
         )
 
-    async def get_snapshot(self, aggregate_id: UUID) -> Optional[Snapshot]:
+    async def get_snapshot(self, aggregate_id: UUID) -> Snapshot | None:
         """
         Get latest snapshot for an aggregate.
-        
+
         Args:
             aggregate_id: Aggregate ID
-            
+
         Returns:
             Latest snapshot or None
         """
@@ -337,10 +335,10 @@ class SnapshotStore:
     def should_snapshot(self, current_version: int) -> bool:
         """
         Check if snapshot should be created.
-        
+
         Args:
             current_version: Current aggregate version
-            
+
         Returns:
             bool: True if snapshot should be created
         """
@@ -350,14 +348,14 @@ class SnapshotStore:
 class AggregateRoot(ABC):
     """
     Abstract base class for event-sourced aggregates.
-    
+
     Aggregates are entities whose state is rebuilt from events.
     """
 
     def __init__(self, aggregate_id: UUID, aggregate_type: str):
         """
         Initialize aggregate root.
-        
+
         Args:
             aggregate_id: Unique aggregate ID
             aggregate_type: Type identifier
@@ -371,16 +369,15 @@ class AggregateRoot(ABC):
     async def apply_event(self, event: DomainEvent) -> None:
         """
         Apply an event to update aggregate state.
-        
+
         Args:
             event: Domain event to apply
         """
-        pass
 
     async def load_from_history(self, events: list[DomainEvent]) -> None:
         """
         Rebuild aggregate state from event history.
-        
+
         Args:
             events: Historical events for this aggregate
         """
@@ -398,7 +395,7 @@ class AggregateRoot(ABC):
     def record_event(self, event: DomainEvent) -> None:
         """
         Record a new event (not yet committed).
-        
+
         Args:
             event: Domain event to record
         """
@@ -416,36 +413,34 @@ class AggregateRoot(ABC):
     def to_snapshot(self) -> dict[str, Any]:
         """
         Create snapshot of current state.
-        
+
         Returns:
             Dictionary representing aggregate state
         """
-        pass
 
     @abstractmethod
     async def from_snapshot(self, state: dict[str, Any]) -> None:
         """
         Restore aggregate from snapshot.
-        
+
         Args:
             state: Snapshot state dictionary
         """
-        pass
 
 
 class EventSourcedRepository:
     """
     Repository for event-sourced aggregates.
-    
+
     Handles saving and loading aggregates using event store and snapshots.
     """
 
     def __init__(
-        self, event_store: EventStore, snapshot_store: Optional[SnapshotStore] = None
+        self, event_store: EventStore, snapshot_store: SnapshotStore | None = None
     ):
         """
         Initialize repository.
-        
+
         Args:
             event_store: Event store instance
             snapshot_store: Optional snapshot store for optimization
@@ -456,7 +451,7 @@ class EventSourcedRepository:
     async def save(self, aggregate: AggregateRoot) -> None:
         """
         Save aggregate by appending uncommitted events.
-        
+
         Args:
             aggregate: Aggregate to save
         """
@@ -485,15 +480,15 @@ class EventSourcedRepository:
         )
 
     async def load(
-        self, aggregate_type: Type[AggregateRoot], aggregate_id: UUID
-    ) -> Optional[AggregateRoot]:
+        self, aggregate_type: type[AggregateRoot], aggregate_id: UUID
+    ) -> AggregateRoot | None:
         """
         Load aggregate from event store.
-        
+
         Args:
             aggregate_type: Type of aggregate to load
             aggregate_id: Aggregate ID
-            
+
         Returns:
             Loaded aggregate or None if not found
         """
@@ -533,11 +528,11 @@ class EnrollmentAggregate(AggregateRoot):
     def __init__(self, aggregate_id: UUID, aggregate_type: str = "enrollment"):
         """Initialize enrollment aggregate."""
         super().__init__(aggregate_id, aggregate_type)
-        self.student_id: Optional[UUID] = None
-        self.section_id: Optional[UUID] = None
-        self.course_id: Optional[UUID] = None
-        self.semester: Optional[str] = None
-        self.enrolled_at: Optional[datetime] = None
+        self.student_id: UUID | None = None
+        self.section_id: UUID | None = None
+        self.course_id: UUID | None = None
+        self.semester: str | None = None
+        self.enrolled_at: datetime | None = None
         self.is_dropped: bool = False
         self.is_waitlisted: bool = False
 

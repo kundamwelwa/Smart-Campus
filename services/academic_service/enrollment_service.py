@@ -5,26 +5,27 @@ Core enrollment business logic with policy engine and event sourcing.
 """
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from shared.events.store import EventStore
-from shared.events.base import Snapshot
-from shared.domain.policies import PolicyEngine, PolicyResult
-from shared.domain.exceptions import EnrollmentPolicyViolationError
-from shared.verification.enrollment_invariants import (
-    assert_enrollment_invariant,
-    get_invariant_monitor,
-    Section as VerificationSection,
-    TimeSlot,
-)
 from services.academic_service.aggregates import EnrollmentAggregate
-from services.academic_service.models import EnrollmentModel, SectionModel, CourseModel
+from services.academic_service.models import CourseModel, EnrollmentModel, SectionModel
 from services.user_service.models import StudentModel
+from shared.domain.exceptions import EnrollmentPolicyViolationError
+from shared.domain.policies import PolicyEngine
+from shared.events.base import Snapshot
+from shared.events.store import EventStore
+from shared.verification.enrollment_invariants import (
+    Section as VerificationSection,
+)
+from shared.verification.enrollment_invariants import (
+    TimeSlot,
+    assert_enrollment_invariant,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -32,7 +33,7 @@ logger = structlog.get_logger(__name__)
 class EnrollmentService:
     """
     Service orchestrating student enrollment with policy enforcement.
-    
+
     Implements:
     - Policy-driven enrollment validation
     - Event-sourced enrollment aggregate
@@ -45,7 +46,7 @@ class EnrollmentService:
     ):
         """
         Initialize enrollment service.
-        
+
         Args:
             db_session: Database session
             event_store: Event store for event sourcing
@@ -60,7 +61,7 @@ class EnrollmentService:
     ) -> EnrollmentModel:
         """
         Enroll a student in a section with policy validation.
-        
+
         Process:
         1. Fetch student and section data
         2. Build policy evaluation context
@@ -68,15 +69,15 @@ class EnrollmentService:
         4. If allowed, create enrollment or add to waitlist
         5. Emit domain events
         6. Update read model (database)
-        
+
         Args:
             student_id: Student UUID
             section_id: Section UUID
             user_id: User performing enrollment (for audit)
-            
+
         Returns:
             EnrollmentModel: Created enrollment
-            
+
         Raises:
             EnrollmentPolicyViolationError: If policies reject enrollment
             ValueError: If student or section not found
@@ -104,7 +105,7 @@ class EnrollmentService:
         # Check for existing enrollment
         existing = await self._check_existing_enrollment(student_id, section_id)
         if existing:
-            raise ValueError(f"Student already enrolled in this section")
+            raise ValueError("Student already enrolled in this section")
 
         # Build policy evaluation context
         context = await self._build_policy_context(student_id, section_id, student, section, course)
@@ -136,14 +137,14 @@ class EnrollmentService:
         )
 
         # FORMAL VERIFICATION: Assert enrollment invariant
-        # Critical invariant: "No student can be enrolled in overlapping sections 
+        # Critical invariant: "No student can be enrolled in overlapping sections
         # that are scheduled at the same time with the same seat allocation."
         try:
             # Build verification sections from database
             verification_sections = await self._build_verification_sections(
                 student_id, section_id, section
             )
-            
+
             # Assert invariant (raises AssertionError if violated)
             assert_enrollment_invariant(
                 student_id=int(student_id),
@@ -151,7 +152,7 @@ class EnrollmentService:
                 sections=verification_sections,
                 raise_on_violation=True,
             )
-            
+
             logger.info(
                 "Formal verification passed - enrollment invariant satisfied",
                 student_id=str(student_id),
@@ -245,17 +246,17 @@ class EnrollmentService:
 
         return enrollment
 
-    async def _get_section(self, section_id: UUID) -> Optional[SectionModel]:
+    async def _get_section(self, section_id: UUID) -> SectionModel | None:
         """Fetch section from database."""
         result = await self.db.execute(select(SectionModel).where(SectionModel.id == section_id))
         return result.scalar_one_or_none()
 
-    async def _get_course(self, course_id: UUID) -> Optional[CourseModel]:
+    async def _get_course(self, course_id: UUID) -> CourseModel | None:
         """Fetch course from database."""
         result = await self.db.execute(select(CourseModel).where(CourseModel.id == course_id))
         return result.scalar_one_or_none()
 
-    async def _get_student(self, student_id: UUID) -> Optional[StudentModel]:
+    async def _get_student(self, student_id: UUID) -> StudentModel | None:
         """Fetch student from database."""
         # Note: This requires importing from user_service
         # In microservices, this would be an RPC call
@@ -268,7 +269,7 @@ class EnrollmentService:
 
     async def _check_existing_enrollment(
         self, student_id: UUID, section_id: UUID
-    ) -> Optional[EnrollmentModel]:
+    ) -> EnrollmentModel | None:
         """Check if enrollment already exists."""
         result = await self.db.execute(
             select(EnrollmentModel).where(
@@ -289,7 +290,7 @@ class EnrollmentService:
     ) -> dict[str, Any]:
         """
         Build context for policy evaluation.
-        
+
         Gathers all necessary data for policy decisions.
         """
         # Get student's completed courses
@@ -306,7 +307,7 @@ class EnrollmentService:
         }
 
         # Build context
-        context = {
+        return {
             # Course data
             "course_prerequisites": course.prerequisites,
             "course_credits": course.credits,
@@ -327,7 +328,6 @@ class EnrollmentService:
             "current_time": datetime.utcnow(),
         }
 
-        return context
 
     async def _get_completed_courses(self, student_id: UUID) -> list[str]:
         """Get list of course codes the student has completed."""
@@ -386,7 +386,7 @@ class EnrollmentService:
         )
 
         return sum(row[0] for row in result.all())
-    
+
     async def _build_verification_sections(
         self,
         student_id: UUID,
@@ -395,51 +395,51 @@ class EnrollmentService:
     ) -> dict[int, VerificationSection]:
         """
         Build verification Section objects from database models.
-        
+
         This converts database models to the verification format needed
         for formal invariant checking.
-        
+
         Args:
             student_id: Student being enrolled
             target_section_id: Section being enrolled in
             target_section: SectionModel for target section
-            
+
         Returns:
             Dictionary of section_id -> VerificationSection
         """
         from datetime import time as dt_time
-        
+
         sections = {}
-        
+
         # Get all sections the student is currently enrolled in
         current_enrollments = await self._get_current_enrollments(
             student_id, target_section.semester
         )
-        
+
         # Convert each enrolled section
         for enrollment in current_enrollments:
             section_id = int(UUID(enrollment['section_id']))
             section_model = await self._get_section(UUID(enrollment['section_id']))
-            
+
             if section_model:
                 # Parse schedule days
                 days = set(enrollment.get('days', '').split(',')) if enrollment.get('days') else set()
-                
+
                 # Parse times
                 start_time = enrollment.get('start_time')
                 end_time = enrollment.get('end_time')
-                
+
                 if isinstance(start_time, str):
                     start_time = dt_time.fromisoformat(start_time)
                 if isinstance(end_time, str):
                     end_time = dt_time.fromisoformat(end_time)
-                
+
                 time_slot = TimeSlot(
                     start_time=start_time or dt_time(9, 0),
                     end_time=end_time or dt_time(10, 0),
                     days=days,
                 )
-                
+
                 # Get enrolled students for this section
                 enrollments_result = await self.db.execute(
                     select(EnrollmentModel.student_id).where(
@@ -448,7 +448,7 @@ class EnrollmentService:
                     )
                 )
                 enrolled_students = {int(uid) for uid, in enrollments_result.all()}
-                
+
                 sections[section_id] = VerificationSection(
                     section_id=section_id,
                     course_id=int(section_model.course_id),
@@ -457,25 +457,25 @@ class EnrollmentService:
                     time_slot=time_slot,
                     enrolled_students=enrolled_students,
                 )
-        
+
         # Add target section
         target_section_id_int = int(target_section_id)
         days = set(target_section.schedule_days.split(',')) if target_section.schedule_days else set()
-        
+
         start_time = target_section.start_time
         end_time = target_section.end_time
-        
+
         if isinstance(start_time, str):
             start_time = dt_time.fromisoformat(start_time)
         if isinstance(end_time, str):
             end_time = dt_time.fromisoformat(end_time)
-        
+
         time_slot = TimeSlot(
             start_time=start_time or dt_time(9, 0),
             end_time=end_time or dt_time(10, 0),
             days=days,
         )
-        
+
         # Get enrolled students for target section
         enrollments_result = await self.db.execute(
             select(EnrollmentModel.student_id).where(
@@ -484,7 +484,7 @@ class EnrollmentService:
             )
         )
         enrolled_students = {int(uid) for uid, in enrollments_result.all()}
-        
+
         sections[target_section_id_int] = VerificationSection(
             section_id=target_section_id_int,
             course_id=int(target_section.course_id),
@@ -493,7 +493,7 @@ class EnrollmentService:
             time_slot=time_slot,
             enrolled_students=enrolled_students,
         )
-        
+
         return sections
 
 

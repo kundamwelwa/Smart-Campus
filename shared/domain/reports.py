@@ -11,11 +11,11 @@ import json
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
 import structlog
+from pydantic import BaseModel, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -23,17 +23,16 @@ logger = structlog.get_logger(__name__)
 PDF_AVAILABLE = False
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
     from reportlab.platypus import (
+        Paragraph,
         SimpleDocTemplate,
+        Spacer,
         Table,
         TableStyle,
-        Paragraph,
-        Spacer,
-        PageBreak,
     )
-    from reportlab.lib.units import inch
 
     PDF_AVAILABLE = True
 except ImportError:
@@ -65,7 +64,7 @@ class ReportMetadata(BaseModel):
     report_type: str = Field(..., description="Report type identifier")
     title: str = Field(..., description="Report title")
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-    generated_by: Optional[UUID] = Field(default=None, description="User who generated report")
+    generated_by: UUID | None = Field(default=None, description="User who generated report")
     scope: ReportScope = Field(default=ReportScope.INTERNAL)
     parameters: dict[str, Any] = Field(
         default_factory=dict, description="Report generation parameters"
@@ -75,7 +74,7 @@ class ReportMetadata(BaseModel):
 class Reportable(ABC):
     """
     Abstract interface for reportable entities and services.
-    
+
     All classes that can generate reports implement this interface.
     Supports polymorphic report generation at runtime.
     """
@@ -89,35 +88,33 @@ class Reportable(ABC):
     ) -> bytes:
         """
         Generate report in specified format.
-        
+
         Args:
             format: Output format (JSON, CSV, PDF, HTML)
             scope: Report scope/audience
             **kwargs: Format-specific options
-            
+
         Returns:
             bytes: Report content as bytes
-            
+
         Raises:
             ValueError: If format not supported
         """
-        pass
 
     @abstractmethod
     def get_report_metadata(self) -> ReportMetadata:
         """
         Get report metadata.
-        
+
         Returns:
             ReportMetadata: Report metadata
         """
-        pass
 
 
 class AdminSummaryReport(Reportable):
     """
     Administrative summary report with system-wide statistics.
-    
+
     Provides high-level overview of platform usage and health.
     """
 
@@ -133,7 +130,7 @@ class AdminSummaryReport(Reportable):
     ):
         """
         Initialize admin summary report.
-        
+
         Args:
             report_id: Report ID
             total_users: Total user count
@@ -161,12 +158,11 @@ class AdminSummaryReport(Reportable):
         """Generate admin summary report in specified format."""
         if format == ReportFormat.JSON:
             return self._generate_json()
-        elif format == ReportFormat.CSV:
+        if format == ReportFormat.CSV:
             return self._generate_csv()
-        elif format == ReportFormat.PDF:
+        if format == ReportFormat.PDF:
             return self._generate_pdf()
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {format}")
 
     def get_report_metadata(self) -> ReportMetadata:
         """Get report metadata."""
@@ -294,7 +290,7 @@ class AdminSummaryReport(Reportable):
 class LecturerCoursePerformanceReport(Reportable):
     """
     Course performance report for lecturers.
-    
+
     Shows detailed statistics about course enrollment, grades, and student performance.
     """
 
@@ -339,12 +335,11 @@ class LecturerCoursePerformanceReport(Reportable):
         """Generate course performance report."""
         if format == ReportFormat.JSON:
             return self._generate_json()
-        elif format == ReportFormat.CSV:
+        if format == ReportFormat.CSV:
             return self._generate_csv()
-        elif format == ReportFormat.PDF:
+        if format == ReportFormat.PDF:
             return self._generate_pdf()
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {format}")
 
     def get_report_metadata(self) -> ReportMetadata:
         """Get report metadata."""
@@ -488,7 +483,7 @@ class LecturerCoursePerformanceReport(Reportable):
 class ComplianceAuditReport(Reportable):
     """
     Compliance audit report for regulatory requirements.
-    
+
     Summarizes audit trail, access patterns, and compliance metrics.
     """
 
@@ -525,12 +520,11 @@ class ComplianceAuditReport(Reportable):
         """Generate compliance audit report."""
         if format == ReportFormat.JSON:
             return self._generate_json()
-        elif format == ReportFormat.CSV:
+        if format == ReportFormat.CSV:
             return self._generate_csv()
-        elif format == ReportFormat.PDF:
+        if format == ReportFormat.PDF:
             return self._generate_pdf()
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {format}")
 
     def get_report_metadata(self) -> ReportMetadata:
         """Get report metadata."""
@@ -684,7 +678,7 @@ class ComplianceAuditReport(Reportable):
 class ReportGenerator:
     """
     Central report generation service.
-    
+
     Manages report creation and format conversion.
     """
 
@@ -699,7 +693,7 @@ class ReportGenerator:
     def register_report_type(self, name: str, report_class: type[Reportable]) -> None:
         """
         Register a new report type (runtime pluggability).
-        
+
         Args:
             name: Report type identifier
             report_class: Report class implementing Reportable
@@ -715,12 +709,12 @@ class ReportGenerator:
     ) -> bytes:
         """
         Generate report using polymorphic dispatch.
-        
+
         Args:
             report: Report object
             format: Output format
             scope: Report scope
-            
+
         Returns:
             bytes: Generated report content
         """

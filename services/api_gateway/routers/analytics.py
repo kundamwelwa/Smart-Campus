@@ -1,8 +1,7 @@
 """Analytics Router - ML predictions and recommendations"""
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Request
 import httpx
 import structlog
+from fastapi import APIRouter, HTTPException, Request
 
 from shared.config import settings
 
@@ -22,7 +21,7 @@ async def get_recommendations() -> dict[str, str]:
 async def predict_enrollment(request: Request):
     """
     Predict student enrollment/dropout probability.
-    
+
     Proxies to Analytics Service - REAL ML MODEL!
     """
     try:

@@ -4,9 +4,9 @@ Facilities Domain Models
 Entities related to campus facilities, rooms, resources, and IoT sensors/actuators.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
-from typing import Optional, Any
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -57,7 +57,7 @@ class ResourceType(str, Enum):
 class Facility(VersionedEntity):
     """
     Campus facility/building entity.
-    
+
     Represents physical buildings with associated metadata and energy monitoring.
     """
 
@@ -73,7 +73,7 @@ class Facility(VersionedEntity):
     accessible: bool = Field(default=True, description="ADA accessible")
 
     # Energy & Environment
-    energy_meter_id: Optional[str] = Field(default=None)
+    energy_meter_id: str | None = Field(default=None)
     current_energy_usage: float = Field(default=0.0, ge=0.0, description="Current kWh usage")
     target_temperature: float = Field(default=22.0, ge=10.0, le=30.0, description="Celsius")
     current_temperature: float = Field(default=22.0, ge=-10.0, le=50.0)
@@ -81,7 +81,7 @@ class Facility(VersionedEntity):
     # Operational
     is_operational: bool = Field(default=True)
     maintenance_required: bool = Field(default=False)
-    last_maintenance_date: Optional[date] = Field(default=None)
+    last_maintenance_date: date | None = Field(default=None)
 
     @field_validator("code")
     @classmethod
@@ -103,7 +103,7 @@ class Facility(VersionedEntity):
 class Room(VersionedEntity):
     """
     Room entity within a facility.
-    
+
     Represents individual rooms with capacity, equipment, and scheduling.
     """
 
@@ -158,26 +158,26 @@ class Room(VersionedEntity):
 class Resource(VersionedEntity):
     """
     Room resource/equipment entity.
-    
+
     Represents individual pieces of equipment or resources.
     """
 
     room_id: UUID = Field(..., description="Parent room ID")
     resource_type: ResourceType = Field(...)
     name: str = Field(..., max_length=200)
-    manufacturer: Optional[str] = Field(default=None, max_length=100)
-    model: Optional[str] = Field(default=None, max_length=100)
-    serial_number: Optional[str] = Field(default=None, max_length=100)
+    manufacturer: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
+    serial_number: str | None = Field(default=None, max_length=100)
 
     # Status
     is_operational: bool = Field(default=True)
     requires_maintenance: bool = Field(default=False)
-    last_maintenance_date: Optional[date] = Field(default=None)
-    next_maintenance_date: Optional[date] = Field(default=None)
+    last_maintenance_date: date | None = Field(default=None)
+    next_maintenance_date: date | None = Field(default=None)
 
     # Usage tracking
     usage_hours: float = Field(default=0.0, ge=0.0)
-    last_used_at: Optional[datetime] = Field(default=None)
+    last_used_at: datetime | None = Field(default=None)
 
     def validate_business_rules(self) -> bool:
         """Validate resource business rules."""
@@ -193,16 +193,16 @@ class Resource(VersionedEntity):
 class Sensor(VersionedEntity):
     """
     IoT sensor entity for environmental monitoring.
-    
+
     Represents physical or virtual sensors collecting real-time data.
     """
 
-    room_id: Optional[UUID] = Field(default=None, description="Associated room ID")
-    facility_id: Optional[UUID] = Field(default=None, description="Associated facility ID")
+    room_id: UUID | None = Field(default=None, description="Associated room ID")
+    facility_id: UUID | None = Field(default=None, description="Associated facility ID")
 
     sensor_type: str = Field(..., description="Type (temperature, humidity, motion, energy, etc.)")
-    manufacturer: Optional[str] = Field(default=None, max_length=100)
-    model: Optional[str] = Field(default=None, max_length=100)
+    manufacturer: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
     hardware_id: str = Field(..., description="Hardware/MAC address")
 
     # Current Reading
@@ -213,18 +213,21 @@ class Sensor(VersionedEntity):
     # Calibration & Status
     is_online: bool = Field(default=True)
     is_calibrated: bool = Field(default=True)
-    last_calibration_date: Optional[date] = Field(default=None)
-    battery_level: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    last_calibration_date: date | None = Field(default=None)
+    battery_level: float | None = Field(default=None, ge=0.0, le=100.0)
 
     # Thresholds for anomaly detection
-    min_threshold: Optional[float] = Field(default=None)
-    max_threshold: Optional[float] = Field(default=None)
+    min_threshold: float | None = Field(default=None)
+    max_threshold: float | None = Field(default=None)
 
     def validate_business_rules(self) -> bool:
         """Validate sensor business rules."""
-        if self.min_threshold is not None and self.max_threshold is not None:
-            if self.min_threshold >= self.max_threshold:
-                raise ValueError("Min threshold must be less than max threshold")
+        if (
+            self.min_threshold is not None
+            and self.max_threshold is not None
+            and self.min_threshold >= self.max_threshold
+        ):
+            raise ValueError("Min threshold must be less than max threshold")
         return True
 
     def update_reading(self, value: float) -> None:
@@ -237,26 +240,24 @@ class Sensor(VersionedEntity):
         """Check if current reading is outside thresholds."""
         if self.min_threshold is not None and self.current_value < self.min_threshold:
             return True
-        if self.max_threshold is not None and self.current_value > self.max_threshold:
-            return True
-        return False
+        return bool(self.max_threshold is not None and self.current_value > self.max_threshold)
 
 
 class Actuator(VersionedEntity):
     """
     IoT actuator entity for environmental control.
-    
+
     Represents devices that can be controlled (lights, HVAC, locks, etc.).
     """
 
-    room_id: Optional[UUID] = Field(default=None, description="Associated room ID")
-    facility_id: Optional[UUID] = Field(default=None, description="Associated facility ID")
+    room_id: UUID | None = Field(default=None, description="Associated room ID")
+    facility_id: UUID | None = Field(default=None, description="Associated facility ID")
 
     actuator_type: str = Field(
         ..., description="Type (hvac, light, lock, blind, power_outlet, etc.)"
     )
-    manufacturer: Optional[str] = Field(default=None, max_length=100)
-    model: Optional[str] = Field(default=None, max_length=100)
+    manufacturer: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
     hardware_id: str = Field(..., description="Hardware/MAC address")
 
     # Current State
@@ -264,8 +265,8 @@ class Actuator(VersionedEntity):
     current_state: dict[str, Any] = Field(
         default_factory=dict, description="Current actuator state"
     )
-    last_command_at: Optional[datetime] = Field(default=None)
-    last_command_by: Optional[UUID] = Field(default=None, description="User who last controlled")
+    last_command_at: datetime | None = Field(default=None)
+    last_command_by: UUID | None = Field(default=None, description="User who last controlled")
 
     # Safety
     requires_authorization: bool = Field(default=False)
@@ -278,11 +279,11 @@ class Actuator(VersionedEntity):
     def send_command(self, command: dict[str, Any], user_id: UUID) -> None:
         """
         Send command to actuator.
-        
+
         Args:
             command: Command dictionary
             user_id: User issuing the command
-            
+
         Raises:
             PermissionError: If user not authorized
         """
@@ -298,7 +299,7 @@ class Actuator(VersionedEntity):
 class Booking(VersionedEntity):
     """
     Room booking/reservation entity.
-    
+
     Manages room reservations with conflict detection.
     """
 
@@ -318,7 +319,7 @@ class Booking(VersionedEntity):
     is_confirmed: bool = Field(default=False)
     is_cancelled: bool = Field(default=False)
     requires_setup: bool = Field(default=False)
-    setup_notes: Optional[str] = Field(default=None, max_length=1000)
+    setup_notes: str | None = Field(default=None, max_length=1000)
 
     def validate_business_rules(self) -> bool:
         """Validate booking business rules."""
@@ -344,11 +345,11 @@ class Booking(VersionedEntity):
     def overlaps_with(self, other_start: datetime, other_end: datetime) -> bool:
         """
         Check if this booking overlaps with another time range.
-        
+
         Args:
             other_start: Other booking start time
             other_end: Other booking end time
-            
+
         Returns:
             bool: True if there's an overlap
         """

@@ -5,13 +5,13 @@ Provides runtime verification of critical system invariants.
 """
 
 from shared.verification.enrollment_invariants import (
+    Enrollment,
     InvariantMonitor,
-    get_invariant_monitor,
-    assert_enrollment_invariant,
+    InvariantViolationType,
     Section,
     TimeSlot,
-    Enrollment,
-    InvariantViolationType,
+    assert_enrollment_invariant,
+    get_invariant_monitor,
 )
 
 __all__ = [

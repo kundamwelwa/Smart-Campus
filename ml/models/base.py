@@ -153,6 +153,7 @@ class BaseMLModel(ABC):
             seed: Random seed value
         """
         import random
+
         import numpy as np
 
         # Set Python random seed

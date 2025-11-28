@@ -2,38 +2,38 @@
 Admin-specific endpoints for Facility Service.
 """
 
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.facility_service.models import BookingModel, FacilityModel, RoomModel
 from shared.database import get_db
-from services.facility_service.models import FacilityModel, RoomModel, BookingModel
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = structlog.get_logger(__name__)
 
 
-async def verify_admin(authorization: Optional[str] = Header(None)) -> UUID:
+async def verify_admin(authorization: str | None = Header(None)) -> UUID:
     """Verify user is admin and return admin ID."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
-    
+
     try:
-        from jose import jwt
-        from shared.config import settings
         import httpx
-        
+        from jose import jwt
+
+        from shared.config import settings
+
         # Extract token
         token = authorization.replace("Bearer ", "").strip()
-        
+
         # Decode JWT
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         user_id = UUID(payload.get("sub"))
-        
+
         # Verify admin status by calling user service - PRODUCTION: No fallbacks
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
@@ -41,13 +41,13 @@ async def verify_admin(authorization: Optional[str] = Header(None)) -> UUID:
                 headers={"Authorization": authorization},
             )
             response.raise_for_status()
-            
+
             user_data = response.json()
             if user_data.get("user_type") != "admin":
                 raise HTTPException(status_code=403, detail="Access denied - Admin role required")
-        
+
         return user_id
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -58,11 +58,11 @@ async def verify_admin(authorization: Optional[str] = Header(None)) -> UUID:
 @router.get("/stats")
 async def get_facility_statistics(
     db: AsyncSession = Depends(get_db),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """
     Get facility service statistics (admin only).
-    
+
     Returns:
         Dictionary with facility statistics
     """
@@ -72,24 +72,24 @@ async def get_facility_statistics(
         total_facilities_stmt = select(func.count(FacilityModel.id))
         total_facilities_result = await db.execute(total_facilities_stmt)
         total_facilities = total_facilities_result.scalar() or 0
-        
+
         # Total rooms
         total_rooms_stmt = select(func.count(RoomModel.id))
         total_rooms_result = await db.execute(total_rooms_stmt)
         total_rooms = total_rooms_result.scalar() or 0
-        
+
         # Available rooms
         available_rooms_stmt = select(func.count(RoomModel.id)).where(
-            RoomModel.is_available == True
+            RoomModel.is_available
         )
         available_rooms_result = await db.execute(available_rooms_stmt)
         available_rooms = available_rooms_result.scalar() or 0
-        
+
         # Total bookings
         total_bookings_stmt = select(func.count(BookingModel.id))
         total_bookings_result = await db.execute(total_bookings_stmt)
         total_bookings = total_bookings_result.scalar() or 0
-        
+
         # Active bookings (future bookings)
         from datetime import datetime
         active_bookings_stmt = select(func.count(BookingModel.id)).where(
@@ -97,14 +97,14 @@ async def get_facility_statistics(
         )
         active_bookings_result = await db.execute(active_bookings_stmt)
         active_bookings = active_bookings_result.scalar() or 0
-        
+
         # Rooms by building
         building_stmt = select(RoomModel.building, func.count(RoomModel.id)).group_by(
             RoomModel.building
         )
         building_result = await db.execute(building_stmt)
         by_building = {row[0]: row[1] for row in building_result.all()}
-        
+
         return {
             "total_facilities": total_facilities,
             "total_rooms": total_rooms,
@@ -114,7 +114,7 @@ async def get_facility_statistics(
             "active_bookings": active_bookings,
             "by_building": by_building,
         }
-        
+
     except Exception as e:
         logger.error("Failed to get facility statistics", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

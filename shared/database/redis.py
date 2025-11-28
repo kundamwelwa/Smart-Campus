@@ -4,7 +4,6 @@ Redis Connection
 Async Redis client for caching and session storage.
 """
 
-from typing import Optional
 
 import redis.asyncio as aioredis
 import structlog
@@ -15,13 +14,13 @@ logger = structlog.get_logger(__name__)
 
 
 # Global Redis client
-_redis_client: Optional[aioredis.Redis] = None
+_redis_client: aioredis.Redis | None = None
 
 
 async def init_redis() -> aioredis.Redis:
     """
     Initialize Redis connection.
-    
+
     Returns:
         aioredis.Redis: Redis client instance
     """
@@ -51,7 +50,7 @@ async def init_redis() -> aioredis.Redis:
 async def get_redis() -> aioredis.Redis:
     """
     Get Redis client instance.
-    
+
     Returns:
         aioredis.Redis: Redis client
     """

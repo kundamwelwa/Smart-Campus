@@ -5,13 +5,12 @@ Implements constraint-based scheduling with soft/hard constraints
 and timetable snapshotting for version control.
 """
 
-from abc import ABC, abstractmethod
-from datetime import datetime, date, time
+from datetime import date, datetime
 from enum import Enum
-from typing import Any, Optional, Dict, List
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.domain.entities import VersionedEntity
 
@@ -35,7 +34,7 @@ class ConstraintPriority(int, Enum):
 class Constraint(BaseModel):
     """
     Scheduling constraint for timetable generation.
-    
+
     Constraints can be hard (must be satisfied) or soft (preferred).
     """
 
@@ -51,7 +50,7 @@ class Constraint(BaseModel):
         default=1.0, ge=0.0, description="Weight for optimization (higher = more important)"
     )
     description: str = Field(..., max_length=500)
-    parameters: Dict[str, Any] = Field(
+    parameters: dict[str, Any] = Field(
         default_factory=dict, description="Constraint-specific parameters"
     )
 
@@ -131,7 +130,7 @@ class BalancedWorkloadConstraint(Constraint):
 class TimetableSnapshot(VersionedEntity):
     """
     Immutable snapshot of a timetable at a point in time.
-    
+
     Enables version control, rollback, and historical analysis.
     """
 
@@ -140,10 +139,10 @@ class TimetableSnapshot(VersionedEntity):
     snapshot_time: datetime = Field(default_factory=datetime.utcnow)
 
     # Timetable Data
-    assignments: Dict[str, Any] = Field(
+    assignments: dict[str, Any] = Field(
         ..., description="Section-to-room-time assignments"
     )
-    metadata: Dict[str, Any] = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict, description="Additional snapshot metadata"
     )
 
@@ -157,13 +156,13 @@ class TimetableSnapshot(VersionedEntity):
     soft_constraints_score: float = Field(
         default=0.0, description="Score for soft constraint satisfaction"
     )
-    constraint_violations: List[str] = Field(
+    constraint_violations: list[str] = Field(
         default_factory=list, description="List of violated constraints"
     )
 
     # Relationships
-    created_by: Optional[UUID] = Field(default=None, description="User who created snapshot")
-    parent_snapshot_id: Optional[UUID] = Field(
+    created_by: UUID | None = Field(default=None, description="User who created snapshot")
+    parent_snapshot_id: UUID | None = Field(
         default=None, description="Parent snapshot ID (for versioning)"
     )
 
@@ -185,7 +184,7 @@ class TimetableSnapshot(VersionedEntity):
 class Timetable(VersionedEntity):
     """
     Current timetable with constraint management and snapshotting.
-    
+
     Supports:
     - Constraint-based scheduling
     - Timetable snapshots for version control
@@ -196,25 +195,25 @@ class Timetable(VersionedEntity):
     academic_year: str = Field(..., description="Academic year (e.g., 2024-2025)")
 
     # Current State
-    assignments: Dict[str, Any] = Field(
+    assignments: dict[str, Any] = Field(
         default_factory=dict, description="Current section assignments"
     )
-    constraints: List[Constraint] = Field(
+    constraints: list[Constraint] = Field(
         default_factory=list, description="Active constraints"
     )
 
     # Snapshot Management
-    snapshots: List[UUID] = Field(
+    snapshots: list[UUID] = Field(
         default_factory=list, description="Snapshot IDs (version history)"
     )
-    current_snapshot_id: Optional[UUID] = Field(
+    current_snapshot_id: UUID | None = Field(
         default=None, description="Current snapshot ID"
     )
 
     # Status
     is_finalized: bool = Field(default=False, description="Whether timetable is finalized")
-    finalized_at: Optional[datetime] = Field(default=None)
-    finalized_by: Optional[UUID] = Field(default=None)
+    finalized_at: datetime | None = Field(default=None)
+    finalized_by: UUID | None = Field(default=None)
 
     def validate_business_rules(self) -> bool:
         """Validate timetable business rules."""
@@ -231,10 +230,10 @@ class Timetable(VersionedEntity):
     def remove_constraint(self, constraint_id: UUID) -> bool:
         """
         Remove a constraint.
-        
+
         Args:
             constraint_id: Constraint ID to remove
-            
+
         Returns:
             True if constraint was found and removed
         """
@@ -245,11 +244,11 @@ class Timetable(VersionedEntity):
             self.mark_updated()
         return removed
 
-    def get_hard_constraints(self) -> List[Constraint]:
+    def get_hard_constraints(self) -> list[Constraint]:
         """Get all hard constraints."""
         return [c for c in self.constraints if c.is_hard()]
 
-    def get_soft_constraints(self) -> List[Constraint]:
+    def get_soft_constraints(self) -> list[Constraint]:
         """Get all soft constraints."""
         return [c for c in self.constraints if c.is_soft()]
 
@@ -258,19 +257,19 @@ class Timetable(VersionedEntity):
         optimization_score: float = 0.0,
         hard_constraints_satisfied: bool = True,
         soft_constraints_score: float = 0.0,
-        constraint_violations: Optional[List[str]] = None,
-        created_by: Optional[UUID] = None,
+        constraint_violations: list[str] | None = None,
+        created_by: UUID | None = None,
     ) -> TimetableSnapshot:
         """
         Create a snapshot of the current timetable state.
-        
+
         Args:
             optimization_score: Overall optimization score
             hard_constraints_satisfied: Whether hard constraints are satisfied
             soft_constraints_score: Soft constraint satisfaction score
             constraint_violations: List of violated constraints
             created_by: User creating the snapshot
-            
+
         Returns:
             TimetableSnapshot: Created snapshot
         """
@@ -300,7 +299,7 @@ class Timetable(VersionedEntity):
     def finalize(self, finalized_by: UUID) -> None:
         """
         Finalize the timetable (make it immutable).
-        
+
         Args:
             finalized_by: User finalizing the timetable
         """

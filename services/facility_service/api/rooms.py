@@ -2,18 +2,17 @@
 Room and Facility API endpoints.
 """
 
-from typing import Optional
-from uuid import UUID
-from pydantic import BaseModel, Field
 from datetime import datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import structlog
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.facility_service.models import FacilityModel, RoomModel
 from shared.database import get_db
-from services.facility_service.models import RoomModel, FacilityModel
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 logger = structlog.get_logger(__name__)
@@ -21,19 +20,19 @@ logger = structlog.get_logger(__name__)
 
 @router.get("")
 async def list_rooms(
-    facility_id: Optional[UUID] = None,
-    is_available: Optional[bool] = None,
-    min_capacity: Optional[int] = None,
+    facility_id: UUID | None = None,
+    is_available: bool | None = None,
+    min_capacity: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
     List all rooms with optional filters.
-    
+
     Args:
         facility_id: Filter by facility
         is_available: Filter by availability
         min_capacity: Minimum capacity required
-        
+
     Returns:
         List of rooms with facility information
     """
@@ -168,11 +167,11 @@ class CreateFacilityRequest(BaseModel):
 
 class UpdateFacilityRequest(BaseModel):
     """Update facility request."""
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    code: Optional[str] = Field(None, min_length=1, max_length=20)
-    facility_type: Optional[str] = Field(None, max_length=50)
-    total_rooms: Optional[int] = Field(None, ge=0)
-    is_operational: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    code: str | None = Field(None, min_length=1, max_length=20)
+    facility_type: str | None = Field(None, max_length=50)
+    total_rooms: int | None = Field(None, ge=0)
+    is_operational: bool | None = None
 
 
 class CreateRoomRequest(BaseModel):
@@ -195,20 +194,20 @@ class CreateRoomRequest(BaseModel):
 
 class UpdateRoomRequest(BaseModel):
     """Update room request."""
-    room_number: Optional[str] = Field(None, min_length=1, max_length=50)
-    room_type: Optional[str] = Field(None, max_length=50)
-    building: Optional[str] = Field(None, max_length=100)
-    floor: Optional[int] = Field(None, ge=0)
-    capacity: Optional[int] = Field(None, ge=1)
-    area_sqm: Optional[float] = Field(None, ge=0)
-    has_projector: Optional[bool] = None
-    has_whiteboard: Optional[bool] = None
-    has_computers: Optional[bool] = None
-    computer_count: Optional[int] = Field(None, ge=0)
-    has_video_conference: Optional[bool] = None
-    is_available: Optional[bool] = None
-    is_bookable: Optional[bool] = None
-    temperature: Optional[float] = None
+    room_number: str | None = Field(None, min_length=1, max_length=50)
+    room_type: str | None = Field(None, max_length=50)
+    building: str | None = Field(None, max_length=100)
+    floor: int | None = Field(None, ge=0)
+    capacity: int | None = Field(None, ge=1)
+    area_sqm: float | None = Field(None, ge=0)
+    has_projector: bool | None = None
+    has_whiteboard: bool | None = None
+    has_computers: bool | None = None
+    computer_count: int | None = Field(None, ge=0)
+    has_video_conference: bool | None = None
+    is_available: bool | None = None
+    is_bookable: bool | None = None
+    temperature: float | None = None
 
 
 @router.post("/facilities", status_code=status.HTTP_201_CREATED)
@@ -227,20 +226,20 @@ async def create_facility(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Facility with code {request.code} already exists"
             )
-        
+
         facility = FacilityModel(
             name=request.name,
             code=request.code.upper(),
             facility_type=request.facility_type,
             total_rooms=request.total_rooms,
         )
-        
+
         db.add(facility)
         await db.commit()
         await db.refresh(facility)
-        
+
         logger.info("Facility created", facility_id=str(facility.id), code=facility.code)
-        
+
         return {
             "id": str(facility.id),
             "name": facility.name,
@@ -251,7 +250,7 @@ async def create_facility(
             "current_temperature": facility.current_temperature,
             "current_energy_usage": facility.current_energy_usage,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -269,10 +268,10 @@ async def update_facility(
     try:
         result = await db.execute(select(FacilityModel).where(FacilityModel.id == facility_id))
         facility = result.scalar_one_or_none()
-        
+
         if not facility:
             raise HTTPException(status_code=404, detail="Facility not found")
-        
+
         if request.name is not None:
             facility.name = request.name
         if request.code is not None:
@@ -295,13 +294,13 @@ async def update_facility(
             facility.total_rooms = request.total_rooms
         if request.is_operational is not None:
             facility.is_operational = request.is_operational
-        
+
         facility.updated_at = datetime.utcnow()
         await db.commit()
         await db.refresh(facility)
-        
+
         logger.info("Facility updated", facility_id=str(facility_id))
-        
+
         return {
             "id": str(facility.id),
             "name": facility.name,
@@ -312,7 +311,7 @@ async def update_facility(
             "current_temperature": facility.current_temperature,
             "current_energy_usage": facility.current_energy_usage,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -329,17 +328,17 @@ async def delete_facility(
     try:
         result = await db.execute(select(FacilityModel).where(FacilityModel.id == facility_id))
         facility = result.scalar_one_or_none()
-        
+
         if not facility:
             raise HTTPException(status_code=404, detail="Facility not found")
-        
+
         await db.delete(facility)
         await db.commit()
-        
+
         logger.info("Facility deleted", facility_id=str(facility_id))
-        
-        return None
-        
+
+        return
+
     except HTTPException:
         raise
     except Exception as e:
@@ -361,7 +360,7 @@ async def create_room(
         facility = facility_result.scalar_one_or_none()
         if not facility:
             raise HTTPException(status_code=404, detail="Facility not found")
-        
+
         # Check if room number already exists in facility
         existing = await db.execute(
             select(RoomModel).where(
@@ -374,7 +373,7 @@ async def create_room(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Room {request.room_number} already exists in this facility"
             )
-        
+
         room = RoomModel(
             facility_id=request.facility_id,
             room_number=request.room_number,
@@ -391,13 +390,13 @@ async def create_room(
             is_available=request.is_available,
             is_bookable=request.is_bookable,
         )
-        
+
         db.add(room)
         await db.commit()
         await db.refresh(room)
-        
+
         logger.info("Room created", room_id=str(room.id), room_number=room.room_number)
-        
+
         return {
             "id": str(room.id),
             "facility_id": str(room.facility_id),
@@ -415,7 +414,7 @@ async def create_room(
             "has_video_conference": room.has_video_conference,
             "temperature": room.temperature,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -438,12 +437,12 @@ async def update_room(
         )
         result = await db.execute(stmt)
         row = result.first()
-        
+
         if not row:
             raise HTTPException(status_code=404, detail="Room not found")
-        
+
         room, facility = row
-        
+
         # Update fields
         if request.room_number is not None:
             # Check if room number is already taken in same facility
@@ -486,13 +485,13 @@ async def update_room(
             room.is_bookable = request.is_bookable
         if request.temperature is not None:
             room.temperature = request.temperature
-        
+
         room.updated_at = datetime.utcnow()
         await db.commit()
         await db.refresh(room)
-        
+
         logger.info("Room updated", room_id=str(room_id))
-        
+
         return {
             "id": str(room.id),
             "facility_id": str(room.facility_id),
@@ -510,7 +509,7 @@ async def update_room(
             "has_video_conference": room.has_video_conference,
             "temperature": room.temperature,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -527,17 +526,17 @@ async def delete_room(
     try:
         result = await db.execute(select(RoomModel).where(RoomModel.id == room_id))
         room = result.scalar_one_or_none()
-        
+
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
-        
+
         await db.delete(room)
         await db.commit()
-        
+
         logger.info("Room deleted", room_id=str(room_id))
-        
-        return None
-        
+
+        return
+
     except HTTPException:
         raise
     except Exception as e:

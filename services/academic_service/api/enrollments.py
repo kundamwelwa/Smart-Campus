@@ -5,23 +5,22 @@ Student enrollment with policy validation and event sourcing - REAL implementati
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Header
+import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from shared.database import get_db, get_mongodb
-from shared.events.store import EventStore
-from shared.domain.policies import create_default_enrollment_policy_engine
 from services.academic_service.enrollment_service import (
-    EnrollmentService,
     EnrollmentPolicyViolationError,
+    EnrollmentService,
 )
-from services.academic_service.models import EnrollmentModel, SectionModel, CourseModel
+from services.academic_service.models import CourseModel, EnrollmentModel, SectionModel
+from shared.database import get_db, get_mongodb
+from shared.domain.policies import create_default_enrollment_policy_engine
+from shared.events.store import EventStore
 
 logger = structlog.get_logger(__name__)
 
@@ -47,34 +46,35 @@ class EnrollmentResponse(BaseModel):
     semester: str
     enrollment_status: str
     is_waitlisted: bool
-    waitlist_position: Optional[int]
+    waitlist_position: int | None
     current_grade_percentage: float
-    current_letter_grade: Optional[str]
+    current_letter_grade: str | None
     enrolled_at: datetime
-    
+
     # Schedule information (from section)
     schedule_days: list[str]
     start_time: str
     end_time: str
-    room_id: Optional[UUID]
+    room_id: UUID | None
     instructor_id: UUID
 
 
 async def get_enrollment_service(db: AsyncSession = Depends(get_db)) -> EnrollmentService:
     """
     Dependency to create EnrollmentService.
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         EnrollmentService: Configured enrollment service
     """
     # Get MongoDB for event store
-    mongodb = await get_mongodb()
+    await get_mongodb()
 
     # Create event store
     from motor.motor_asyncio import AsyncIOMotorClient
+
     from shared.config import settings
 
     mongo_client = AsyncIOMotorClient(settings.mongodb_url)
@@ -97,21 +97,21 @@ async def enroll_student(
 ) -> EnrollmentResponse:
     """
     Enroll a student in a course section.
-    
+
     This is a COMPLETE, PRODUCTION-READY enrollment system with:
     - Policy validation (prerequisites, capacity, conflicts)
     - Event sourcing for audit trail
     - Automatic waitlist management
     - Real database operations (no mocks!)
-    
+
     Args:
         request: Enrollment request
         enrollment_service: Enrollment service with policy engine
         db: Database session
-        
+
     Returns:
         EnrollmentResponse: Enrollment result
-        
+
     Raises:
         HTTPException: If enrollment fails
     """
@@ -195,23 +195,23 @@ async def enroll_student(
         )
 
 
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[UUID]:
+async def get_current_user_id(authorization: str | None = Header(None)) -> UUID | None:
     """Extract user ID from JWT token."""
     if not authorization:
         return None
-    
+
     try:
         from jose import jwt
+
         from shared.config import settings
-        
+
         # Extract token
         token = authorization.replace("Bearer ", "")
-        
+
         # Decode JWT
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-        user_id = UUID(payload.get("sub"))
-        return user_id
-        
+        return UUID(payload.get("sub"))
+
     except Exception as e:
         logger.warning("JWT validation failed", error=str(e))
         return None
@@ -219,19 +219,19 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> Op
 
 @router.get("", response_model=list[EnrollmentResponse])
 async def list_enrollments(
-    student_id: Optional[UUID] = Query(None),
-    semester: Optional[str] = Query(None),
-    section_id: Optional[UUID] = Query(None),
+    student_id: UUID | None = Query(None),
+    semester: str | None = Query(None),
+    section_id: UUID | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> list[EnrollmentResponse]:
     """
     List enrollments with filtering.
-    
+
     If no student_id provided, automatically gets current user's enrollments from JWT.
-    
+
     Args:
         student_id: Filter by student (optional - defaults to current user)
         semester: Filter by semester
@@ -240,7 +240,7 @@ async def list_enrollments(
         limit: Page size
         authorization: JWT token
         db: Database session
-        
+
     Returns:
         List of enrollments
     """
@@ -252,7 +252,7 @@ async def list_enrollments(
         else:
             # If no JWT and no student_id, return empty list
             return []
-    
+
     query = (
         select(EnrollmentModel, SectionModel, CourseModel)
         .join(SectionModel, EnrollmentModel.section_id == SectionModel.id)
@@ -307,11 +307,11 @@ async def drop_enrollment(
 ) -> None:
     """
     Drop an enrollment.
-    
+
     Args:
         enrollment_id: Enrollment UUID
         db: Database session
-        
+
     Raises:
         HTTPException: If enrollment not found
     """

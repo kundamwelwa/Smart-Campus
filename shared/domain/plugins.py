@@ -10,14 +10,15 @@ import importlib.util
 import inspect
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional, Type
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
 import structlog
+from pydantic import BaseModel, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -54,63 +55,59 @@ class PluginMetadata(BaseModel):
 class IPlugin(ABC):
     """
     Interface for all plugins.
-    
+
     Plugins must implement this interface to be loaded by the plugin manager.
     """
 
     def __init__(self, metadata: PluginMetadata):
         """
         Initialize plugin.
-        
+
         Args:
             metadata: Plugin metadata
         """
         self.metadata = metadata
         self.status = PluginStatus.UNLOADED
-        self.loaded_at: Optional[datetime] = None
-        self.error: Optional[str] = None
+        self.loaded_at: datetime | None = None
+        self.error: str | None = None
 
     @abstractmethod
     async def on_load(self) -> None:
         """
         Called when plugin is loaded.
-        
+
         Use this to initialize resources, register handlers, etc.
         """
-        pass
 
     @abstractmethod
     async def on_activate(self) -> None:
         """
         Called when plugin is activated.
-        
+
         Use this to start background tasks, open connections, etc.
         """
-        pass
 
     @abstractmethod
     async def on_deactivate(self) -> None:
         """
         Called when plugin is deactivated.
-        
+
         Use this to stop background tasks, close connections, etc.
         """
-        pass
 
     @abstractmethod
     async def on_unload(self) -> None:
         """
         Called when plugin is unloaded.
-        
+
         Use this to cleanup resources, unregister handlers, etc.
         """
-        pass
 
     @abstractmethod
     def get_info(self) -> dict[str, Any]:
         """
         Get plugin information.
-        
+
         Returns:
             Dictionary with plugin information
         """
@@ -129,7 +126,7 @@ class IPlugin(ABC):
 class PluginContext:
     """
     Plugin execution context with dependency injection.
-    
+
     Provides plugins with access to system resources and services.
     """
 
@@ -141,7 +138,7 @@ class PluginContext:
     def register_service(self, name: str, service: Any) -> None:
         """
         Register a service that plugins can use.
-        
+
         Args:
             name: Service name
             service: Service instance
@@ -152,13 +149,13 @@ class PluginContext:
     def get_service(self, name: str) -> Any:
         """
         Get a registered service.
-        
+
         Args:
             name: Service name
-            
+
         Returns:
             Service instance
-            
+
         Raises:
             KeyError: If service not found
         """
@@ -171,7 +168,7 @@ class PluginContext:
     def register_hook(self, hook_name: str, callback: Callable) -> None:
         """
         Register a hook callback.
-        
+
         Args:
             hook_name: Hook identifier
             callback: Callback function
@@ -183,12 +180,12 @@ class PluginContext:
     async def trigger_hook(self, hook_name: str, *args: Any, **kwargs: Any) -> list[Any]:
         """
         Trigger all callbacks for a hook.
-        
+
         Args:
             hook_name: Hook identifier
             *args: Positional arguments for callbacks
             **kwargs: Keyword arguments for callbacks
-            
+
         Returns:
             List of callback results
         """
@@ -212,14 +209,14 @@ class PluginContext:
 class PluginManager:
     """
     Plugin manager with hot-loading and dependency injection.
-    
+
     Manages plugin lifecycle, dependencies, and hot-reload without system restart.
     """
 
-    def __init__(self, plugin_directory: Optional[Path] = None):
+    def __init__(self, plugin_directory: Path | None = None):
         """
         Initialize plugin manager.
-        
+
         Args:
             plugin_directory: Directory to scan for plugins
         """
@@ -232,20 +229,20 @@ class PluginManager:
     def register_service(self, name: str, service: Any) -> None:
         """
         Register a service for plugins to use.
-        
+
         Args:
             name: Service name
             service: Service instance
         """
         self.context.register_service(name, service)
 
-    async def load_plugin(self, plugin_path: Path) -> Optional[IPlugin]:
+    async def load_plugin(self, plugin_path: Path) -> IPlugin | None:
         """
         Load a plugin from file.
-        
+
         Args:
             plugin_path: Path to plugin file (.py)
-            
+
         Returns:
             Loaded plugin instance or None if loading failed
         """
@@ -257,7 +254,7 @@ class PluginManager:
                 return None
 
             import json
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 metadata_dict = json.load(f)
             metadata = PluginMetadata(**metadata_dict)
 
@@ -311,10 +308,10 @@ class PluginManager:
     async def activate_plugin(self, plugin_name: str) -> bool:
         """
         Activate a loaded plugin.
-        
+
         Args:
             plugin_name: Plugin name
-            
+
         Returns:
             bool: True if activated successfully
         """
@@ -343,10 +340,10 @@ class PluginManager:
     async def deactivate_plugin(self, plugin_name: str) -> bool:
         """
         Deactivate an active plugin.
-        
+
         Args:
             plugin_name: Plugin name
-            
+
         Returns:
             bool: True if deactivated successfully
         """
@@ -375,10 +372,10 @@ class PluginManager:
     async def unload_plugin(self, plugin_name: str) -> bool:
         """
         Unload a plugin (hot-unload).
-        
+
         Args:
             plugin_name: Plugin name
-            
+
         Returns:
             bool: True if unloaded successfully
         """
@@ -415,10 +412,10 @@ class PluginManager:
     async def reload_plugin(self, plugin_name: str) -> bool:
         """
         Hot-reload a plugin without system restart.
-        
+
         Args:
             plugin_name: Plugin name
-            
+
         Returns:
             bool: True if reloaded successfully
         """
@@ -450,7 +447,7 @@ class PluginManager:
     async def discover_and_load_all(self) -> list[IPlugin]:
         """
         Discover and load all plugins in plugin directory.
-        
+
         Returns:
             List of loaded plugins
         """
@@ -471,14 +468,14 @@ class PluginManager:
         logger.info("Plugin discovery complete", count=len(loaded_plugins))
         return loaded_plugins
 
-    def get_plugin(self, plugin_name: str) -> Optional[IPlugin]:
+    def get_plugin(self, plugin_name: str) -> IPlugin | None:
         """Get a loaded plugin by name."""
         return self.plugins.get(plugin_name)
 
     def list_plugins(self) -> list[dict[str, Any]]:
         """
         List all loaded plugins with their info.
-        
+
         Returns:
             List of plugin info dictionaries
         """

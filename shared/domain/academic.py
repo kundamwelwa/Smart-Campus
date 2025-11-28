@@ -5,13 +5,12 @@ Entities related to courses, enrollment, assessments, and grades.
 Implements immutability for Grade objects and policy-driven enrollment.
 """
 
-from datetime import datetime, date
-from decimal import Decimal
+from datetime import date, datetime
 from enum import Enum
-from typing import Optional, Any
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared.domain.entities import VersionedEntity
 
@@ -49,7 +48,7 @@ class GradeScale(str, Enum):
 class Course(VersionedEntity):
     """
     Course entity representing an academic course offering.
-    
+
     A course is a reusable template that can have multiple sections
     across different semesters.
     """
@@ -88,7 +87,7 @@ class Course(VersionedEntity):
 class Syllabus(VersionedEntity):
     """
     Course syllabus with detailed curriculum information.
-    
+
     Versioned to track changes across semesters.
     """
 
@@ -129,7 +128,7 @@ class Syllabus(VersionedEntity):
 class Section(VersionedEntity):
     """
     Course section representing a specific offering in a semester.
-    
+
     A section is an instance of a course with specific timing, room, and instructor.
     """
 
@@ -144,7 +143,7 @@ class Section(VersionedEntity):
     )
     start_time: str = Field(..., description="Start time (HH:MM format)")
     end_time: str = Field(..., description="End time (HH:MM format)")
-    room_id: Optional[UUID] = Field(default=None, description="Assigned room ID")
+    room_id: UUID | None = Field(default=None, description="Assigned room ID")
 
     # Enrollment
     max_enrollment: int = Field(default=30, ge=1, le=500)
@@ -227,14 +226,14 @@ class Assessment(VersionedEntity):
     # Dates
     assigned_date: datetime = Field(default_factory=datetime.utcnow)
     due_date: datetime = Field(...)
-    available_from: Optional[datetime] = Field(default=None)
-    available_until: Optional[datetime] = Field(default=None)
+    available_from: datetime | None = Field(default=None)
+    available_until: datetime | None = Field(default=None)
 
     # Settings
     allow_late_submission: bool = Field(default=False)
     late_penalty_per_day: float = Field(default=0.0, ge=0.0, le=1.0)
     is_group_work: bool = Field(default=False)
-    max_group_size: Optional[int] = Field(default=None, ge=2)
+    max_group_size: int | None = Field(default=None, ge=2)
 
     def validate_business_rules(self) -> bool:
         """Validate assessment business rules."""
@@ -249,15 +248,13 @@ class Assessment(VersionedEntity):
         now = datetime.utcnow()
         if self.available_from and now < self.available_from:
             return False
-        if self.available_until and now > self.available_until:
-            return False
-        return True
+        return not (self.available_until and now > self.available_until)
 
 
 class Grade(BaseModel):
     """
     Immutable grade object for a student's assessment.
-    
+
     Once created, grades cannot be modified (only replaced with new versions
     for audit trail purposes). This ensures grade integrity and compliance.
     """
@@ -272,22 +269,22 @@ class Grade(BaseModel):
     # Grade Information
     points_earned: float = Field(..., ge=0.0, description="Points earned")
     total_points: float = Field(..., gt=0.0, description="Total possible points")
-    letter_grade: Optional[str] = Field(default=None, max_length=2)
+    letter_grade: str | None = Field(default=None, max_length=2)
     percentage: float = Field(..., ge=0.0, le=100.0)
 
     # Metadata (immutable)
     graded_by: UUID = Field(..., description="Grader user ID")
     graded_at: datetime = Field(default_factory=datetime.utcnow)
-    submitted_at: Optional[datetime] = Field(default=None)
+    submitted_at: datetime | None = Field(default=None)
     is_late: bool = Field(default=False)
     late_days: int = Field(default=0, ge=0)
 
     # Feedback
-    feedback: Optional[str] = Field(default=None, max_length=5000)
+    feedback: str | None = Field(default=None, max_length=5000)
     rubric_scores: dict[str, float] = Field(default_factory=dict)
 
     # Audit (immutability enforcement)
-    previous_grade_id: Optional[UUID] = Field(
+    previous_grade_id: UUID | None = Field(
         default=None, description="Previous grade version (if regrade)"
     )
     version: int = Field(default=1, ge=1)
@@ -310,28 +307,27 @@ class Grade(BaseModel):
         """Convert percentage to letter grade."""
         if self.percentage >= 93:
             return "A"
-        elif self.percentage >= 90:
+        if self.percentage >= 90:
             return "A-"
-        elif self.percentage >= 87:
+        if self.percentage >= 87:
             return "B+"
-        elif self.percentage >= 83:
+        if self.percentage >= 83:
             return "B"
-        elif self.percentage >= 80:
+        if self.percentage >= 80:
             return "B-"
-        elif self.percentage >= 77:
+        if self.percentage >= 77:
             return "C+"
-        elif self.percentage >= 73:
+        if self.percentage >= 73:
             return "C"
-        elif self.percentage >= 70:
+        if self.percentage >= 70:
             return "C-"
-        elif self.percentage >= 67:
+        if self.percentage >= 67:
             return "D+"
-        elif self.percentage >= 63:
+        if self.percentage >= 63:
             return "D"
-        elif self.percentage >= 60:
+        if self.percentage >= 60:
             return "D-"
-        else:
-            return "F"
+        return "F"
 
     @classmethod
     def create(
@@ -346,7 +342,7 @@ class Grade(BaseModel):
     ) -> "Grade":
         """
         Factory method to create a new grade with calculated percentage.
-        
+
         Args:
             student_id: Student UUID
             assessment_id: Assessment UUID
@@ -355,7 +351,7 @@ class Grade(BaseModel):
             total_points: Total possible points
             graded_by: Grader user UUID
             **kwargs: Additional optional fields
-            
+
         Returns:
             Grade: Immutable grade object
         """
@@ -379,43 +375,42 @@ class Grade(BaseModel):
         """Convert percentage to letter grade."""
         if percentage >= 93:
             return "A"
-        elif percentage >= 90:
+        if percentage >= 90:
             return "A-"
-        elif percentage >= 87:
+        if percentage >= 87:
             return "B+"
-        elif percentage >= 83:
+        if percentage >= 83:
             return "B"
-        elif percentage >= 80:
+        if percentage >= 80:
             return "B-"
-        elif percentage >= 77:
+        if percentage >= 77:
             return "C+"
-        elif percentage >= 73:
+        if percentage >= 73:
             return "C"
-        elif percentage >= 70:
+        if percentage >= 70:
             return "C-"
-        elif percentage >= 67:
+        if percentage >= 67:
             return "D+"
-        elif percentage >= 63:
+        if percentage >= 63:
             return "D"
-        elif percentage >= 60:
+        if percentage >= 60:
             return "D-"
-        else:
-            return "F"
+        return "F"
 
     def create_regrade(
         self, new_points_earned: float, graded_by: UUID, feedback: str
     ) -> "Grade":
         """
         Create a new grade version (regrade).
-        
+
         Since grades are immutable, regrading creates a new grade object
         linked to the previous version for audit trail.
-        
+
         Args:
             new_points_earned: Updated points
             graded_by: Grader user ID
             feedback: Regrade justification
-            
+
         Returns:
             Grade: New immutable grade object
         """
@@ -438,7 +433,7 @@ class Grade(BaseModel):
 class Enrollment(VersionedEntity):
     """
     Student enrollment in a course section.
-    
+
     Tracks enrollment status, grades, and participation.
     """
 
@@ -452,18 +447,18 @@ class Enrollment(VersionedEntity):
         description="Status: enrolled, waitlisted, dropped, withdrawn, completed",
     )
     is_waitlisted: bool = Field(default=False)
-    waitlist_position: Optional[int] = Field(default=None, ge=1)
+    waitlist_position: int | None = Field(default=None, ge=1)
 
     # Academic Performance
     current_grade_percentage: float = Field(default=0.0, ge=0.0, le=100.0)
-    current_letter_grade: Optional[str] = Field(default=None)
+    current_letter_grade: str | None = Field(default=None)
     attendance_percentage: float = Field(default=100.0, ge=0.0, le=100.0)
 
     # Predictions (ML-generated)
-    dropout_probability: Optional[float] = Field(
+    dropout_probability: float | None = Field(
         default=None, ge=0.0, le=1.0, description="ML-predicted dropout risk"
     )
-    predicted_final_grade: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    predicted_final_grade: float | None = Field(default=None, ge=0.0, le=100.0)
 
     def validate_business_rules(self) -> bool:
         """Validate enrollment business rules."""
@@ -502,7 +497,7 @@ class Enrollment(VersionedEntity):
 class Waitlist(VersionedEntity):
     """
     Waitlist management for course sections.
-    
+
     Maintains ordered queue of students waiting for enrollment.
     """
 
@@ -522,11 +517,11 @@ class Waitlist(VersionedEntity):
     def add_student(self, student_id: UUID, priority: int = 0) -> int:
         """
         Add student to waitlist.
-        
+
         Args:
             student_id: Student UUID
             priority: Priority score (higher = higher priority)
-            
+
         Returns:
             int: Waitlist position (1-indexed)
         """
@@ -565,13 +560,13 @@ class Waitlist(VersionedEntity):
             return True
         return False
 
-    def get_next_student(self) -> Optional[UUID]:
+    def get_next_student(self) -> UUID | None:
         """Get next student ID from waitlist (highest priority)."""
         if not self.entries:
             return None
         return UUID(self.entries[0]["student_id"])
 
-    def pop_next_student(self) -> Optional[UUID]:
+    def pop_next_student(self) -> UUID | None:
         """Remove and return next student from waitlist."""
         student_id = self.get_next_student()
         if student_id:

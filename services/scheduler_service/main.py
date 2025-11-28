@@ -4,35 +4,36 @@ Scheduler Service - Timetabling with Constraint Satisfaction
 Uses OR-Tools CP-SAT solver for automatic timetable generation with soft/hard constraints.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Any
+from typing import Any
 
+import structlog
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
-import structlog
 
-from shared.config import settings
 from services.scheduler_service.constraint_solver import TimetableSolver
+from shared.config import settings
 
 logger = structlog.get_logger(__name__)
 
 # Global solver instance
-solver: Optional[TimetableSolver] = None
+solver: TimetableSolver | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan."""
     global solver
-    
+
     logger.info("Starting Scheduler Service")
-    
+
     # Initialize constraint solver
     solver = TimetableSolver()
     logger.info("Timetable solver initialized")
-    
+
     yield
-    
+
     logger.info("Scheduler Service shutdown complete")
 
 
@@ -47,7 +48,7 @@ app = FastAPI(
 
 class Constraint(BaseModel):
     """Scheduling constraint."""
-    
+
     type: str = Field(..., description="Constraint type: hard or soft")
     name: str
     weight: int = Field(default=1, description="Weight for soft constraints")
@@ -55,7 +56,7 @@ class Constraint(BaseModel):
 
 class ScheduleRequest(BaseModel):
     """Request for timetable generation."""
-    
+
     sections: list[dict[str, Any]]
     rooms: list[dict[str, Any]]
     instructors: list[dict[str, Any]]
@@ -64,7 +65,7 @@ class ScheduleRequest(BaseModel):
 
 class ScheduleResponse(BaseModel):
     """Response with generated timetable."""
-    
+
     success: bool
     assignments: dict[str, dict[str, Any]]
     conflicts: list[str]
@@ -76,17 +77,17 @@ class ScheduleResponse(BaseModel):
 async def generate_timetable(request: ScheduleRequest) -> ScheduleResponse:
     """
     Generate optimized timetable using constraint satisfaction.
-    
+
     Considers:
     - Room capacity constraints (hard)
     - Instructor availability (hard)
     - Time slot conflicts (hard)
     - Room preferences (soft)
     - Balanced workload (soft)
-    
+
     Args:
         request: Scheduling request
-        
+
     Returns:
         Generated timetable with assignments
     """
@@ -95,13 +96,13 @@ async def generate_timetable(request: ScheduleRequest) -> ScheduleResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Solver not initialized",
         )
-    
+
     logger.info(
         "Timetable generation request",
         num_sections=len(request.sections),
         num_rooms=len(request.rooms),
     )
-    
+
     # Solve scheduling problem
     result = await solver.solve(
         sections=request.sections,
@@ -109,13 +110,13 @@ async def generate_timetable(request: ScheduleRequest) -> ScheduleResponse:
         instructors=request.instructors,
         constraints=request.constraints,
     )
-    
+
     logger.info(
         "Timetable generated",
         success=result['success'],
         assignments=len(result.get('assignments', {})),
     )
-    
+
     return ScheduleResponse(
         success=result['success'],
         assignments=result.get('assignments', {}),

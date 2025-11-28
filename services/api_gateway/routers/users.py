@@ -6,13 +6,12 @@ Proxies requests to User Service.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status, Header
-from pydantic import BaseModel
 import httpx
 import structlog
+from fastapi import APIRouter, Header, HTTPException, status
+from pydantic import BaseModel
 
 logger = structlog.get_logger(__name__)
 
@@ -38,10 +37,10 @@ class UserResponse(BaseModel):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(authorization: Optional[str] = Header(None)) -> UserResponse:
+async def get_current_user(authorization: str | None = Header(None)) -> UserResponse:
     """
     Get current authenticated user's profile.
-    
+
     Proxies to User Service.
     """
     logger.info("Get current user profile")
@@ -62,19 +61,18 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> UserR
                 headers=headers,
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 return UserResponse(**response.json())
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", "Failed to fetch user profile")
-                except:
-                    detail = f"Failed to fetch user profile: {response.text[:200]}"
-                
-                logger.error("Get current user failed", status=response.status_code, error=detail)
-                raise HTTPException(status_code=response.status_code, detail=detail)
-                
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", "Failed to fetch user profile")
+            except Exception:
+                detail = f"Failed to fetch user profile: {response.text[:200]}"
+
+            logger.error("Get current user failed", status=response.status_code, error=detail)
+            raise HTTPException(status_code=response.status_code, detail=detail)
+
     except httpx.RequestError as e:
         logger.error("Failed to connect to User Service", error=str(e))
         raise HTTPException(

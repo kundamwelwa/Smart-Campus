@@ -13,18 +13,33 @@ project_root = Path(__file__).parent.parent.parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
+import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import structlog
 
+from services.api_gateway.middleware import (
+    CORSPreflightMiddleware,
+    LoggingMiddleware,
+    RateLimitMiddleware,
+)
+from services.api_gateway.routers import (
+    academic,
+    admin,
+    analytics,
+    auth,
+    facilities,
+    facility,
+    health,
+    lecturer,
+    scheduler,
+    users,
+)
 from shared.config import settings
-from shared.database import init_db, close_db, init_mongodb, close_mongodb, init_redis, close_redis
-from services.api_gateway.middleware import RateLimitMiddleware, LoggingMiddleware, CORSPreflightMiddleware
-from services.api_gateway.routers import health, auth, users, academic, scheduler, analytics, facility, lecturer, admin, facilities
+from shared.database import close_db, close_mongodb, close_redis, init_db, init_mongodb, init_redis
 
 logger = structlog.get_logger(__name__)
 
@@ -33,7 +48,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan manager.
-    
+
     Handles startup and shutdown events for database connections
     and resource initialization.
     """
@@ -107,8 +122,9 @@ app.add_middleware(CORSPreflightMiddleware, allowed_origins=cors_origins)
 
 
 # Import domain exceptions for proper handling
-from shared.domain.exceptions import DomainException
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
+
+from shared.domain.exceptions import DomainException
 
 
 # Global exception handler with rich domain exception support
@@ -116,11 +132,11 @@ from fastapi.exceptions import HTTPException as FastAPIHTTPException
 async def domain_exception_handler(request: Request, exc: DomainException) -> JSONResponse:
     """
     Handle domain exceptions with structured error responses.
-    
+
     Args:
         request: FastAPI request
         exc: Domain exception
-        
+
     Returns:
         JSONResponse: Structured error response
     """
@@ -133,12 +149,12 @@ async def domain_exception_handler(request: Request, exc: DomainException) -> JS
         status_code=exc.status_code,
         context=exc.context,
     )
-    
+
     response = JSONResponse(
         status_code=exc.status_code,
         content=exc.to_dict(),
     )
-    
+
     # Add CORS headers
     origin = request.headers.get("origin")
     if origin and (origin in cors_origins or "*" in cors_origins or settings.environment == "development"):
@@ -146,7 +162,7 @@ async def domain_exception_handler(request: Request, exc: DomainException) -> JS
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
-    
+
     return response
 
 
@@ -154,11 +170,11 @@ async def domain_exception_handler(request: Request, exc: DomainException) -> JS
 async def http_exception_handler(request: Request, exc: FastAPIHTTPException) -> JSONResponse:
     """
     Handle FastAPI HTTP exceptions.
-    
+
     Args:
         request: FastAPI request
         exc: HTTP exception
-        
+
     Returns:
         JSONResponse: Error response
     """
@@ -169,18 +185,18 @@ async def http_exception_handler(request: Request, exc: FastAPIHTTPException) ->
         status_code=exc.status_code,
         detail=exc.detail,
     )
-    
+
     content = {
         "error": "HTTP_ERROR",
         "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
         "status_code": exc.status_code,
     }
-    
+
     response = JSONResponse(
         status_code=exc.status_code,
         content=content,
     )
-    
+
     # Add CORS headers
     origin = request.headers.get("origin")
     if origin and (origin in cors_origins or "*" in cors_origins or settings.environment == "development"):
@@ -188,7 +204,7 @@ async def http_exception_handler(request: Request, exc: FastAPIHTTPException) ->
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
-    
+
     return response
 
 
@@ -197,11 +213,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     """
     Global exception handler for unhandled errors.
     Ensures CORS headers are included in error responses.
-    
+
     Args:
         request: FastAPI request
         exc: Raised exception
-        
+
     Returns:
         JSONResponse: Error response with CORS headers
     """
@@ -223,7 +239,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             "type": type(exc).__name__,
         },
     )
-    
+
     # Add CORS headers manually to ensure they're present
     origin = request.headers.get("origin")
     if origin and (origin in cors_origins or "*" in cors_origins or settings.environment == "development"):
@@ -231,7 +247,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
-    
+
     return response
 
 

@@ -5,17 +5,16 @@ CRUD operations for course sections - fully functional.
 """
 
 from datetime import date, datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
+from services.academic_service.models import CourseModel, SectionModel
 from shared.database import get_db
-from services.academic_service.models import SectionModel, CourseModel
 
 logger = structlog.get_logger(__name__)
 
@@ -32,7 +31,7 @@ class CreateSectionRequest(BaseModel):
     schedule_days: list[str] = Field(..., min_items=1)
     start_time: str = Field(..., description="HH:MM format")
     end_time: str = Field(..., description="HH:MM format")
-    room_id: Optional[UUID] = None
+    room_id: UUID | None = None
     max_enrollment: int = Field(default=30, ge=1, le=500)
     max_waitlist: int = Field(default=10, ge=0)
     start_date: date
@@ -54,7 +53,7 @@ class SectionResponse(BaseModel):
     schedule_days: list[str]
     start_time: str
     end_time: str
-    room_id: Optional[UUID]
+    room_id: UUID | None
     max_enrollment: int
     current_enrollment: int
     waitlist_size: int
@@ -74,11 +73,11 @@ async def create_section(
 ) -> SectionResponse:
     """
     Create a new course section.
-    
+
     Args:
         request: Section creation request
         db: Database session
-        
+
     Returns:
         SectionResponse: Created section
     """
@@ -149,8 +148,8 @@ async def create_section(
 
 @router.get("", response_model=list[SectionResponse])
 async def list_sections(
-    course_code: Optional[str] = Query(None),
-    semester: Optional[str] = Query(None),
+    course_code: str | None = Query(None),
+    semester: str | None = Query(None),
     available_only: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -158,7 +157,7 @@ async def list_sections(
 ) -> list[SectionResponse]:
     """
     List sections with filtering.
-    
+
     Args:
         course_code: Filter by course code
         semester: Filter by semester
@@ -166,7 +165,7 @@ async def list_sections(
         skip: Pagination offset
         limit: Page size
         db: Database session
-        
+
     Returns:
         List of sections
     """
@@ -179,7 +178,7 @@ async def list_sections(
             skip=skip,
             limit=limit,
         )
-        
+
         # Join sections with courses
         query = select(SectionModel, CourseModel).join(
             CourseModel, SectionModel.course_id == CourseModel.id
@@ -230,7 +229,7 @@ async def list_sections(
 
         logger.info("Sections listed", count=len(sections_response))
         return sections_response
-        
+
     except Exception as e:
         logger.error(
             "Error listing sections",
@@ -249,11 +248,11 @@ async def list_sections(
 async def get_section(section_id: UUID, db: AsyncSession = Depends(get_db)) -> SectionResponse:
     """
     Get section by ID.
-    
+
     Args:
         section_id: Section UUID
         db: Database session
-        
+
     Returns:
         SectionResponse: Section details
     """

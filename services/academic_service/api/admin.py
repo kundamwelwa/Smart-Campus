@@ -2,42 +2,43 @@
 Admin-specific endpoints for Academic Service.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-import structlog
 import httpx
+import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database import get_db
+from services.academic_service.models import CourseModel, EnrollmentModel, SectionModel
 from shared.config import settings
-from services.academic_service.models import CourseModel, SectionModel, EnrollmentModel
+from shared.database import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = structlog.get_logger(__name__)
 
 
 async def verify_admin(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> UUID:
     """Verify user is admin and return admin ID."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
-    
+
     try:
-        from jose import jwt
-        from shared.config import settings
         import httpx
-        
+        from jose import jwt
+
+        from shared.config import settings
+
         # Extract token
         token = authorization.replace("Bearer ", "").strip()
-        
+
         # Decode JWT
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         user_id = UUID(payload.get("sub"))
-        
+
         # Verify admin status by calling user service - PRODUCTION: No fallbacks
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
@@ -45,13 +46,13 @@ async def verify_admin(
                 headers={"Authorization": authorization},
             )
             response.raise_for_status()
-            
+
             user_data = response.json()
             if user_data.get("user_type") != "admin":
                 raise HTTPException(status_code=403, detail="Access denied - Admin role required")
-        
+
         return user_id
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -62,11 +63,11 @@ async def verify_admin(
 @router.get("/stats")
 async def get_academic_statistics(
     db: AsyncSession = Depends(get_db),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """
     Get academic service statistics (admin only).
-    
+
     Returns:
         Dictionary with academic statistics
     """
@@ -76,52 +77,52 @@ async def get_academic_statistics(
         total_courses_stmt = select(func.count(CourseModel.id))
         total_courses_result = await db.execute(total_courses_stmt)
         total_courses = total_courses_result.scalar() or 0
-        
+
         # Active courses
         active_courses_stmt = select(func.count(CourseModel.id)).where(
             CourseModel.status == "active"
         )
         active_courses_result = await db.execute(active_courses_stmt)
         active_courses = active_courses_result.scalar() or 0
-        
+
         # Total sections
         total_sections_stmt = select(func.count(SectionModel.id))
         total_sections_result = await db.execute(total_sections_stmt)
         total_sections = total_sections_result.scalar() or 0
-        
+
         # Active sections
         active_sections_stmt = select(func.count(SectionModel.id)).where(
             SectionModel.status == "active"
         )
         active_sections_result = await db.execute(active_sections_stmt)
         active_sections = active_sections_result.scalar() or 0
-        
+
         # Total enrollments
         total_enrollments_stmt = select(func.count(EnrollmentModel.id))
         total_enrollments_result = await db.execute(total_enrollments_stmt)
         total_enrollments = total_enrollments_result.scalar() or 0
-        
+
         # Active enrollments
         active_enrollments_stmt = select(func.count(EnrollmentModel.id)).where(
             EnrollmentModel.enrollment_status == "enrolled"
         )
         active_enrollments_result = await db.execute(active_enrollments_stmt)
         active_enrollments = active_enrollments_result.scalar() or 0
-        
+
         # Waitlisted enrollments
         waitlisted_stmt = select(func.count(EnrollmentModel.id)).where(
-            EnrollmentModel.is_waitlisted == True
+            EnrollmentModel.is_waitlisted
         )
         waitlisted_result = await db.execute(waitlisted_stmt)
         waitlisted = waitlisted_result.scalar() or 0
-        
+
         # Courses by department
         dept_stmt = select(CourseModel.department, func.count(CourseModel.id)).group_by(
             CourseModel.department
         )
         dept_result = await db.execute(dept_stmt)
         by_department = {row[0]: row[1] for row in dept_result.all()}
-        
+
         return {
             "total_courses": total_courses,
             "active_courses": active_courses,
@@ -132,7 +133,7 @@ async def get_academic_statistics(
             "waitlisted_enrollments": waitlisted,
             "by_department": by_department,
         }
-        
+
     except Exception as e:
         logger.error("Failed to get academic statistics", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
@@ -140,20 +141,20 @@ async def get_academic_statistics(
 
 @router.get("/enrollments")
 async def get_section_enrollments(
-    section_id: Optional[UUID] = None,
-    course_id: Optional[UUID] = None,
+    section_id: UUID | None = None,
+    course_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     admin_id: UUID = Depends(verify_admin),
 ):
     """
     Get enrollments for a section or course (admin only).
-    
+
     Args:
         section_id: Filter by section
         course_id: Filter by course (returns all sections)
         db: Database session
         admin_id: Admin user ID
-        
+
     Returns:
         List of enrollments with student and course information
     """
@@ -164,7 +165,7 @@ async def get_section_enrollments(
             .join(SectionModel, EnrollmentModel.section_id == SectionModel.id)
             .join(CourseModel, SectionModel.course_id == CourseModel.id)
         )
-        
+
         if section_id:
             query = query.where(EnrollmentModel.section_id == section_id)
         elif course_id:
@@ -172,14 +173,14 @@ async def get_section_enrollments(
         else:
             # Return all enrollments if no filter
             pass
-        
+
         query = query.where(EnrollmentModel.enrollment_status == "enrolled")
-        
+
         result = await db.execute(query)
         rows = result.all()
 
         # Fetch real student profiles from User Service (one call per unique student)
-        student_profiles: Dict[str, Dict[str, Any]] = {}
+        student_profiles: dict[str, dict[str, Any]] = {}
         async with httpx.AsyncClient(timeout=5.0) as client:
             for enrollment, _, _ in rows:
                 student_id_str = str(enrollment.student_id)
@@ -240,15 +241,15 @@ async def get_section_enrollments(
                     "enrolled_at": enrollment.enrolled_at.isoformat(),
                 }
             )
-        
+
         logger.info(
             "Admin enrollments retrieved",
             admin_id=str(admin_id),
             count=len(enrollments),
         )
-        
+
         return enrollments
-        
+
     except Exception as e:
         logger.error("Failed to get enrollments", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

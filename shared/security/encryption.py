@@ -8,7 +8,7 @@ for sensitive communications.
 
 import base64
 import json
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -19,9 +19,9 @@ logger = structlog.get_logger(__name__)
 CRYPTO_AVAILABLE = False
 try:
     from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa, padding
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
     CRYPTO_AVAILABLE = True
 except ImportError:
@@ -31,15 +31,15 @@ except ImportError:
 class EncryptionService:
     """
     Service for encrypting and decrypting sensitive fields.
-    
+
     Uses symmetric encryption (Fernet) for field-level encryption with
     key rotation support.
     """
 
-    def __init__(self, master_key: Optional[bytes] = None):
+    def __init__(self, master_key: bytes | None = None):
         """
         Initialize encryption service.
-        
+
         Args:
             master_key: Master encryption key (32 bytes). If None, generates new key.
         """
@@ -59,7 +59,7 @@ class EncryptionService:
     def generate_key(cls) -> bytes:
         """
         Generate a new encryption key.
-        
+
         Returns:
             bytes: 32-byte encryption key
         """
@@ -70,13 +70,13 @@ class EncryptionService:
     def encrypt_field(self, value: Any) -> str:
         """
         Encrypt a field value.
-        
+
         Args:
             value: Value to encrypt (will be JSON-serialized)
-            
+
         Returns:
             str: Base64-encoded encrypted value
-            
+
         Raises:
             RuntimeError: If encryption not available
         """
@@ -96,13 +96,13 @@ class EncryptionService:
     def decrypt_field(self, encrypted_value: str) -> Any:
         """
         Decrypt a field value.
-        
+
         Args:
             encrypted_value: Base64-encoded encrypted value
-            
+
         Returns:
             Decrypted value
-            
+
         Raises:
             RuntimeError: If encryption not available
             ValueError: If decryption fails
@@ -125,15 +125,15 @@ class EncryptionService:
             logger.error("Decryption failed", error=str(e))
             raise ValueError(f"Decryption failed: {str(e)}")
 
-    def encrypt_grade(self, points_earned: float, total_points: float, feedback: Optional[str] = None) -> dict[str, str]:
+    def encrypt_grade(self, points_earned: float, total_points: float, feedback: str | None = None) -> dict[str, str]:
         """
         Encrypt grade data (example use case).
-        
+
         Args:
             points_earned: Points earned
             total_points: Total possible points
             feedback: Optional feedback text
-            
+
         Returns:
             Dictionary with encrypted fields
         """
@@ -151,10 +151,10 @@ class EncryptionService:
     def decrypt_grade(self, encrypted_grade: str) -> dict[str, Any]:
         """
         Decrypt grade data.
-        
+
         Args:
             encrypted_grade: Encrypted grade string
-            
+
         Returns:
             Dictionary with decrypted grade data
         """
@@ -163,16 +163,15 @@ class EncryptionService:
     def rotate_key(self, new_key: bytes) -> None:
         """
         Rotate encryption key.
-        
+
         Note: Existing encrypted data will need to be re-encrypted with new key.
-        
+
         Args:
             new_key: New encryption key
         """
         if not CRYPTO_AVAILABLE:
             raise RuntimeError("Encryption not available")
 
-        old_cipher = self.cipher
         self.cipher = Fernet(new_key)
         self.master_key = new_key
         logger.info("Encryption key rotated")
@@ -181,14 +180,14 @@ class EncryptionService:
 class AsymmetricEncryptionService:
     """
     Service for asymmetric (public/private key) encryption.
-    
+
     Used for encrypting sensitive communications and key exchange.
     """
 
-    def __init__(self, private_key: Optional[bytes] = None, public_key: Optional[bytes] = None):
+    def __init__(self, private_key: bytes | None = None, public_key: bytes | None = None):
         """
         Initialize asymmetric encryption service.
-        
+
         Args:
             private_key: PEM-encoded private key
             public_key: PEM-encoded public key
@@ -219,7 +218,7 @@ class AsymmetricEncryptionService:
     def generate_key_pair(cls) -> tuple[bytes, bytes]:
         """
         Generate a new RSA key pair.
-        
+
         Returns:
             Tuple of (private_key_pem, public_key_pem)
         """
@@ -247,10 +246,10 @@ class AsymmetricEncryptionService:
     def encrypt_with_public_key(self, data: bytes) -> bytes:
         """
         Encrypt data with public key.
-        
+
         Args:
             data: Data to encrypt
-            
+
         Returns:
             bytes: Encrypted data
         """
@@ -269,10 +268,10 @@ class AsymmetricEncryptionService:
     def decrypt_with_private_key(self, encrypted_data: bytes) -> bytes:
         """
         Decrypt data with private key.
-        
+
         Args:
             encrypted_data: Encrypted data
-            
+
         Returns:
             bytes: Decrypted data
         """
@@ -292,14 +291,14 @@ class AsymmetricEncryptionService:
 class EncryptedGradeManager:
     """
     Manager for encrypted grade storage and retrieval.
-    
+
     Handles encryption/decryption of grade data with audit logging.
     """
 
     def __init__(self, encryption_service: EncryptionService):
         """
         Initialize encrypted grade manager.
-        
+
         Args:
             encryption_service: Encryption service instance
         """
@@ -313,12 +312,12 @@ class EncryptedGradeManager:
         assessment_id: UUID,
         points_earned: float,
         total_points: float,
-        feedback: Optional[str],
+        feedback: str | None,
         graded_by: UUID,
     ) -> None:
         """
         Store an encrypted grade.
-        
+
         Args:
             grade_id: Grade ID
             student_id: Student ID
@@ -351,14 +350,14 @@ class EncryptedGradeManager:
 
     async def retrieve_grade(
         self, grade_id: UUID, requesting_user_id: UUID
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Retrieve and decrypt a grade.
-        
+
         Args:
             grade_id: Grade ID
             requesting_user_id: User requesting the grade (for audit)
-            
+
         Returns:
             Decrypted grade data or None
         """
@@ -388,16 +387,16 @@ class EncryptedGradeManager:
     async def re_encrypt_all_grades(self, new_encryption_service: EncryptionService) -> int:
         """
         Re-encrypt all grades with new key (for key rotation).
-        
+
         Args:
             new_encryption_service: New encryption service with rotated key
-            
+
         Returns:
             int: Number of grades re-encrypted
         """
         count = 0
 
-        for grade_id, encrypted_grade in self.encrypted_grades.items():
+        for _grade_id, encrypted_grade in self.encrypted_grades.items():
             # Decrypt with old key
             decrypted_data = self.encryption_service.decrypt_grade(
                 encrypted_grade["encrypted_data"]

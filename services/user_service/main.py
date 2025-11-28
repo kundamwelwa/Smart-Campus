@@ -4,16 +4,16 @@ User Service Main Application
 Microservice handling user management, authentication, and authorization.
 """
 
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
 import structlog
+from fastapi import FastAPI
 
+from services.user_service.api import admin, auth, roles, users
 from shared.config import settings
-from shared.database import init_db, close_db, init_mongodb, close_mongodb, init_redis, close_redis
-from services.user_service.api import users, auth, roles, admin
+from shared.database import close_db, close_mongodb, close_redis, init_db, init_mongodb, init_redis
 
 logger = structlog.get_logger(__name__)
 

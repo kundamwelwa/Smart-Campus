@@ -4,8 +4,8 @@ Role Management API Endpoints
 Manage user roles and permissions.
 """
 
-from fastapi import APIRouter, HTTPException, status
 import structlog
+from fastapi import APIRouter
 
 logger = structlog.get_logger(__name__)
 

@@ -4,10 +4,9 @@ MongoDB Connection
 Async MongoDB client for event store and document storage.
 """
 
-from typing import Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import structlog
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from shared.config import settings
 
@@ -15,13 +14,13 @@ logger = structlog.get_logger(__name__)
 
 
 # Global MongoDB client
-_mongodb_client: Optional[AsyncIOMotorClient] = None
+_mongodb_client: AsyncIOMotorClient | None = None
 
 
 async def init_mongodb() -> AsyncIOMotorClient:
     """
     Initialize MongoDB connection.
-    
+
     Returns:
         AsyncIOMotorClient: MongoDB client instance
     """
@@ -46,7 +45,7 @@ async def init_mongodb() -> AsyncIOMotorClient:
 async def get_mongodb() -> AsyncIOMotorDatabase:
     """
     Get MongoDB database instance.
-    
+
     Returns:
         AsyncIOMotorDatabase: Database instance
     """

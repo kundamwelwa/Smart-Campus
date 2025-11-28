@@ -5,12 +5,12 @@ Events related to academic operations: courses, enrollment, grades, etc.
 """
 
 from datetime import datetime
-from typing import ClassVar, Optional
+from typing import ClassVar
 from uuid import UUID
 
 from pydantic import Field
 
-from shared.events.base import DomainEvent, EventMetadata
+from shared.events.base import DomainEvent
 
 
 class CourseCreatedEvent(DomainEvent):
@@ -58,7 +58,7 @@ class SectionScheduledEvent(DomainEvent):
 class StudentEnrolledEvent(DomainEvent):
     """
     Event emitted when a student successfully enrolls in a section.
-    
+
     This is a critical event for enrollment aggregate.
     """
 
@@ -96,7 +96,7 @@ class StudentDroppedEvent(DomainEvent):
 class GradeAssignedEvent(DomainEvent):
     """
     Event emitted when a grade is assigned to a student.
-    
+
     Grades are immutable, so this event represents the creation of a grade record.
     """
 
@@ -117,7 +117,7 @@ class GradeAssignedEvent(DomainEvent):
 class GradeUpdatedEvent(DomainEvent):
     """
     Event emitted when a grade is regraded.
-    
+
     Since grades are immutable, this creates a new grade version.
     """
 

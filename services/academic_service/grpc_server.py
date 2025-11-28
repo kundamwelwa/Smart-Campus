@@ -8,15 +8,12 @@ This runs alongside the FastAPI HTTP service and uses the same domain logic.
 """
 
 import asyncio
-from concurrent import futures
-from typing import AsyncIterator
 
 import grpc
-
-from shared.config import settings
-
 from shared.grpc.generated import academic_pb2 as academic_pb2
 from shared.grpc.generated import academic_pb2_grpc as academic_pb2_grpc
+
+from shared.config import settings
 
 
 class AcademicServiceGRPC(academic_pb2_grpc.AcademicServiceServicer):

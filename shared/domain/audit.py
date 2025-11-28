@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuditAction(str, Enum):
@@ -46,7 +46,7 @@ class AuditSeverity(str, Enum):
 class AuditLogEntry(BaseModel):
     """
     Immutable audit log entry with tamper-evident hash chaining.
-    
+
     Each entry contains a hash of its own content plus the previous entry's hash,
     creating a blockchain-like structure that detects tampering.
     """
@@ -62,13 +62,13 @@ class AuditLogEntry(BaseModel):
     # Action Details
     action: AuditAction = Field(..., description="Type of action performed")
     severity: AuditSeverity = Field(default=AuditSeverity.INFO)
-    actor_id: Optional[UUID] = Field(default=None, description="User/system performing action")
+    actor_id: UUID | None = Field(default=None, description="User/system performing action")
     actor_type: str = Field(default="user", description="Actor type (user/system/service)")
 
     # Resource Details
     resource_type: str = Field(..., description="Type of resource affected")
-    resource_id: Optional[UUID] = Field(default=None, description="Specific resource ID")
-    resource_name: Optional[str] = Field(default=None, max_length=200)
+    resource_id: UUID | None = Field(default=None, description="Specific resource ID")
+    resource_name: str | None = Field(default=None, max_length=200)
 
     # Event Details
     description: str = Field(..., max_length=1000, description="Human-readable description")
@@ -77,17 +77,17 @@ class AuditLogEntry(BaseModel):
     )
 
     # Context
-    ip_address: Optional[str] = Field(default=None, max_length=45)
-    user_agent: Optional[str] = Field(default=None, max_length=500)
-    session_id: Optional[UUID] = Field(default=None)
-    correlation_id: Optional[str] = Field(default=None, description="Request correlation ID")
+    ip_address: str | None = Field(default=None, max_length=45)
+    user_agent: str | None = Field(default=None, max_length=500)
+    session_id: UUID | None = Field(default=None)
+    correlation_id: str | None = Field(default=None, description="Request correlation ID")
 
     # Changes (for UPDATE actions)
-    old_values: Optional[dict[str, Any]] = Field(default=None)
-    new_values: Optional[dict[str, Any]] = Field(default=None)
+    old_values: dict[str, Any] | None = Field(default=None)
+    new_values: dict[str, Any] | None = Field(default=None)
 
     # Tamper-Evident Chain
-    previous_hash: Optional[str] = Field(
+    previous_hash: str | None = Field(
         default=None, description="Hash of previous audit entry"
     )
     entry_hash: str = Field(..., description="Hash of this entry's content")
@@ -98,19 +98,19 @@ class AuditLogEntry(BaseModel):
         action: AuditAction,
         resource_type: str,
         description: str,
-        previous_hash: Optional[str] = None,
+        previous_hash: str | None = None,
         **kwargs: Any,
     ) -> "AuditLogEntry":
         """
         Factory method to create a new audit log entry with automatic hashing.
-        
+
         Args:
             action: Audit action type
             resource_type: Type of resource
             description: Event description
             previous_hash: Hash of previous entry in chain
             **kwargs: Additional fields
-            
+
         Returns:
             AuditLogEntry: Immutable audit entry with computed hash
         """
@@ -133,10 +133,10 @@ class AuditLogEntry(BaseModel):
     def _compute_hash(data: dict[str, Any]) -> str:
         """
         Compute SHA-256 hash of entry data.
-        
+
         Args:
             data: Entry data dictionary
-            
+
         Returns:
             str: Hex-encoded SHA-256 hash
         """
@@ -152,9 +152,9 @@ class AuditLogEntry(BaseModel):
         def json_serializer(obj: Any) -> Any:
             if isinstance(obj, UUID):
                 return str(obj)
-            elif isinstance(obj, datetime):
+            if isinstance(obj, datetime):
                 return obj.isoformat()
-            elif isinstance(obj, Enum):
+            if isinstance(obj, Enum):
                 return obj.value
             return obj
 
@@ -167,7 +167,7 @@ class AuditLogEntry(BaseModel):
     def verify_hash(self) -> bool:
         """
         Verify that the entry's hash is correct (not tampered).
-        
+
         Returns:
             bool: True if hash is valid
         """
@@ -177,10 +177,10 @@ class AuditLogEntry(BaseModel):
     def verify_chain(self, previous_entry: Optional["AuditLogEntry"]) -> bool:
         """
         Verify the chain integrity with the previous entry.
-        
+
         Args:
             previous_entry: Previous audit log entry in chain
-            
+
         Returns:
             bool: True if chain is valid
         """
@@ -195,7 +195,7 @@ class AuditLogEntry(BaseModel):
 class AuditLogChain:
     """
     Manages a chain of audit log entries with integrity verification.
-    
+
     Provides methods to append entries and verify chain integrity.
     """
 
@@ -212,13 +212,13 @@ class AuditLogChain:
     ) -> AuditLogEntry:
         """
         Append a new entry to the chain.
-        
+
         Args:
             action: Audit action
             resource_type: Resource type
             description: Event description
             **kwargs: Additional entry fields
-            
+
         Returns:
             AuditLogEntry: Created entry
         """
@@ -238,7 +238,7 @@ class AuditLogChain:
     def verify_integrity(self) -> tuple[bool, list[str]]:
         """
         Verify the integrity of the entire chain.
-        
+
         Returns:
             Tuple of (is_valid, list of error messages)
         """
@@ -272,7 +272,7 @@ class AuditLogChain:
         return [e for e in self.entries if e.actor_id == actor_id]
 
     def get_entries_by_resource(
-        self, resource_type: str, resource_id: Optional[UUID] = None
+        self, resource_type: str, resource_id: UUID | None = None
     ) -> list[AuditLogEntry]:
         """Get all entries for a specific resource."""
         if resource_id:
@@ -297,14 +297,14 @@ class AuditLogChain:
 class ComplianceChecker:
     """
     Compliance checking and reporting for audit logs.
-    
+
     Analyzes audit logs for policy violations and compliance issues.
     """
 
     def __init__(self, audit_chain: AuditLogChain):
         """
         Initialize compliance checker.
-        
+
         Args:
             audit_chain: Audit log chain to analyze
         """
@@ -313,7 +313,7 @@ class ComplianceChecker:
     def check_unauthorized_access_attempts(self) -> list[AuditLogEntry]:
         """
         Find unauthorized access attempts.
-        
+
         Returns:
             List of audit entries with access denied events
         """
@@ -324,11 +324,11 @@ class ComplianceChecker:
     ) -> dict[UUID, list[AuditLogEntry]]:
         """
         Find users with excessive failed authentication attempts.
-        
+
         Args:
             threshold: Number of failures to trigger alert
             window_minutes: Time window for counting failures
-            
+
         Returns:
             Dictionary mapping user IDs to their failed attempts
         """
@@ -364,7 +364,7 @@ class ComplianceChecker:
     def check_data_exports(self) -> list[AuditLogEntry]:
         """
         Find all data export events for GDPR compliance.
-        
+
         Returns:
             List of data export audit entries
         """
@@ -375,11 +375,11 @@ class ComplianceChecker:
     ) -> list[AuditLogEntry]:
         """
         Audit trail for sensitive resource access.
-        
+
         Args:
             resource_type: Resource type to audit
             resource_id: Specific resource ID
-            
+
         Returns:
             List of all access events for the resource
         """
@@ -388,7 +388,7 @@ class ComplianceChecker:
     def generate_compliance_report(self) -> dict[str, Any]:
         """
         Generate comprehensive compliance report.
-        
+
         Returns:
             Dictionary with compliance metrics and findings
         """

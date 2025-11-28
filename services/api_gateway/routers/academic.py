@@ -6,14 +6,13 @@ Proxies requests to Academic Service.
 """
 
 from datetime import date, datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status, Query, Header, Request
-from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field
 import httpx
 import structlog
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 
 logger = structlog.get_logger(__name__)
 
@@ -26,12 +25,12 @@ ACADEMIC_SERVICE_URL = "http://localhost:8002/api/v1"
 @router.post("/grades", status_code=status.HTTP_201_CREATED)
 async def create_grade(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy grade creation to Academic Service."""
     try:
         request_data = await request.json()
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{ACADEMIC_SERVICE_URL}/academic/grades",
@@ -40,7 +39,7 @@ async def create_grade(
             )
             response.raise_for_status()
             return response.json()
-            
+
     except httpx.HTTPStatusError as e:
         logger.error("Grade creation failed", status_code=e.response.status_code, detail=e.response.text)
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
@@ -54,9 +53,9 @@ async def create_grade(
 
 @router.get("/grades")
 async def list_grades(
-    student_id: Optional[UUID] = Query(None),
-    section_id: Optional[UUID] = Query(None),
-    authorization: Optional[str] = Header(None),
+    student_id: UUID | None = Query(None),
+    section_id: UUID | None = Query(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy grade listing to Academic Service."""
     try:
@@ -65,7 +64,7 @@ async def list_grades(
             params["student_id"] = str(student_id)
         if section_id:
             params["section_id"] = str(section_id)
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
                 f"{ACADEMIC_SERVICE_URL}/academic/grades",
@@ -74,7 +73,7 @@ async def list_grades(
             )
             response.raise_for_status()
             return response.json()
-            
+
     except httpx.HTTPStatusError as e:
         logger.error("Grade listing failed", status_code=e.response.status_code)
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
@@ -119,18 +118,18 @@ class SectionResponse(BaseModel):
     section_number: str
     semester: str
     instructor_id: UUID
-    instructor_name: Optional[str] = None
+    instructor_name: str | None = None
     schedule_days: list[str]
     start_time: str
     end_time: str
-    room_id: Optional[UUID] = None
-    room_number: Optional[str] = None
+    room_id: UUID | None = None
+    room_number: str | None = None
     max_enrollment: int
     current_enrollment: int
     waitlist_size: int
     max_waitlist: int
     is_full: bool
-    has_waitlist_space: Optional[bool] = None
+    has_waitlist_space: bool | None = None
     start_date: date
     end_date: date
     add_drop_deadline: date
@@ -141,11 +140,11 @@ class SectionResponse(BaseModel):
 class AssignmentCreatePayload(BaseModel):
     section_id: UUID
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     type: str = "auto"
     due_date: datetime
     total_points: int = 100
-    external_task_id: Optional[str] = None
+    external_task_id: str | None = None
 
 
 class AssignmentResponse(BaseModel):
@@ -153,11 +152,11 @@ class AssignmentResponse(BaseModel):
     course_id: UUID
     section_id: UUID
     title: str
-    description: Optional[str]
+    description: str | None
     type: str
     due_date: datetime
     total_points: int
-    external_task_id: Optional[str]
+    external_task_id: str | None
     created_by_lecturer_id: UUID
     status: str
 
@@ -171,10 +170,10 @@ class SubmissionResponse(BaseModel):
     assignment_id: UUID
     student_id: UUID
     submitted_at: datetime
-    auto_score: Optional[float]
-    auto_feedback: Optional[str]
-    lecturer_score: Optional[float]
-    lecturer_feedback: Optional[str]
+    auto_score: float | None
+    auto_feedback: str | None
+    lecturer_score: float | None
+    lecturer_feedback: str | None
     status: str
 
 
@@ -183,9 +182,9 @@ class ExternalTaskResponse(BaseModel):
 
     id: str
     name: str
-    course_code: Optional[str] = None
-    course_title: Optional[str] = None
-    description: Optional[str] = None
+    course_code: str | None = None
+    course_title: str | None = None
+    description: str | None = None
 
 
 class EnrollmentRequest(BaseModel):
@@ -207,30 +206,30 @@ class EnrollmentResponse(BaseModel):
     semester: str
     enrollment_status: str
     is_waitlisted: bool
-    waitlist_position: Optional[int]
+    waitlist_position: int | None
     current_grade_percentage: float
-    current_letter_grade: Optional[str]
+    current_letter_grade: str | None
     enrolled_at: datetime
-    
+
     # Schedule information (from section)
     schedule_days: list[str]
     start_time: str
     end_time: str
-    room_id: Optional[str]
+    room_id: str | None
     instructor_id: str
 
 
 async def _list_courses(
-    department: Optional[str] = None,
-    level: Optional[str] = None,
-    semester: Optional[str] = None,
+    department: str | None = None,
+    level: str | None = None,
+    semester: str | None = None,
     skip: int = 0,
     limit: int = 100,
-    authorization: Optional[str] = None,
+    authorization: str | None = None,
 ) -> list[CourseResponse]:
     """
     List available courses with filtering.
-    
+
     Proxies to Academic Service.
     """
     logger.info("List courses", department=department, level=level, semester=semester)
@@ -243,7 +242,7 @@ async def _list_courses(
             params["level"] = level
         if semester:
             params["semester"] = semester
-            
+
         headers = {}
         if authorization:
             headers["Authorization"] = authorization
@@ -255,18 +254,17 @@ async def _list_courses(
                 headers=headers,
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 return response.json()
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", "Failed to fetch courses")
-                except:
-                    detail = f"Failed to fetch courses: {response.text[:200]}"
-                
-                raise HTTPException(status_code=response.status_code, detail=detail)
-                
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", "Failed to fetch courses")
+            except Exception:
+                detail = f"Failed to fetch courses: {response.text[:200]}"
+
+            raise HTTPException(status_code=response.status_code, detail=detail)
+
     except httpx.RequestError as e:
         logger.error("Failed to connect to Academic Service", error=str(e))
         raise HTTPException(
@@ -278,12 +276,12 @@ async def _list_courses(
 # Register the same endpoint on both routers
 @router.get("/courses", response_model=list[CourseResponse])
 async def list_courses(
-    department: Optional[str] = Query(None),
-    level: Optional[str] = Query(None),
-    semester: Optional[str] = Query(None),
+    department: str | None = Query(None),
+    level: str | None = Query(None),
+    semester: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[CourseResponse]:
     """List courses - alias for _list_courses."""
     return await _list_courses(department, level, semester, skip, limit, authorization)
@@ -291,12 +289,12 @@ async def list_courses(
 
 @courses_router.get("", response_model=list[CourseResponse])
 async def list_courses_direct(
-    department: Optional[str] = Query(None),
-    level: Optional[str] = Query(None),
-    semester: Optional[str] = Query(None),
+    department: str | None = Query(None),
+    level: str | None = Query(None),
+    semester: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[CourseResponse]:
     """List courses - direct route at /api/v1/courses."""
     return await _list_courses(department, level, semester, skip, limit, authorization)
@@ -305,7 +303,7 @@ async def list_courses_direct(
 @courses_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_course_direct(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Create course - direct route at /api/v1/courses."""
     try:
@@ -337,7 +335,7 @@ async def create_course_direct(
 async def update_course_direct(
     course_id: UUID,
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Update course - direct route at /api/v1/courses/{course_id}."""
     try:
@@ -368,7 +366,7 @@ async def update_course_direct(
 @courses_router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_course_direct(
     course_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Delete course - direct route at /api/v1/courses/{course_id}."""
     try:
@@ -382,7 +380,7 @@ async def delete_course_direct(
                 headers=headers,
             )
             response.raise_for_status()
-            return None
+            return
     except httpx.RequestError as e:
         logger.error("Failed to proxy course deletion", error=str(e))
         raise HTTPException(status_code=503, detail="Academic Service unavailable")
@@ -397,10 +395,10 @@ async def delete_course_direct(
 async def get_course(course_id: UUID) -> CourseResponse:
     """
     Get detailed course information.
-    
+
     Args:
         course_id: Course UUID
-        
+
     Returns:
         CourseResponse: Course details
     """
@@ -416,16 +414,16 @@ async def get_course(course_id: UUID) -> CourseResponse:
 @router.post("/sections", status_code=status.HTTP_201_CREATED)
 async def create_section(
     request: Request,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy section creation to Academic Service."""
     try:
         request_data = await request.json()
-        
+
         headers = {}
         if authorization:
             headers["Authorization"] = authorization
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{ACADEMIC_SERVICE_URL}/sections",
@@ -434,7 +432,7 @@ async def create_section(
             )
             response.raise_for_status()
             return response.json()
-            
+
     except httpx.HTTPStatusError as e:
         logger.error("Section creation failed", status_code=e.response.status_code, detail=e.response.text)
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
@@ -448,17 +446,17 @@ async def create_section(
 
 @router.get("/sections", response_model=list[SectionResponse])
 async def list_sections(
-    course_code: Optional[str] = Query(None),
-    semester: Optional[str] = Query(None),
-    instructor_id: Optional[UUID] = Query(None),
+    course_code: str | None = Query(None),
+    semester: str | None = Query(None),
+    instructor_id: UUID | None = Query(None),
     available_only: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[SectionResponse]:
     """
     List course sections with filtering.
-    
+
     Args:
         course_code: Filter by course code
         semester: Filter by semester
@@ -467,7 +465,7 @@ async def list_sections(
         skip: Pagination offset
         limit: Page size
         authorization: JWT token
-        
+
     Returns:
         List of sections
     """
@@ -486,7 +484,7 @@ async def list_sections(
             params["semester"] = semester
         if instructor_id:
             params["instructor_id"] = str(instructor_id)
-            
+
         headers = {}
         if authorization:
             headers["Authorization"] = authorization
@@ -498,24 +496,23 @@ async def list_sections(
                 headers=headers,
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 return response.json()
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", "Failed to fetch sections")
-                except:
-                    detail = f"Failed to fetch sections: {response.text[:200]}"
-                
-                logger.error(
-                    "Academic Service returned error for sections",
-                    status_code=response.status_code,
-                    detail=detail,
-                    url=f"{ACADEMIC_SERVICE_URL}/sections"
-                )
-                raise HTTPException(status_code=response.status_code, detail=detail)
-                
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", "Failed to fetch sections")
+            except Exception:
+                detail = f"Failed to fetch sections: {response.text[:200]}"
+
+            logger.error(
+                "Academic Service returned error for sections",
+                status_code=response.status_code,
+                detail=detail,
+                url=f"{ACADEMIC_SERVICE_URL}/sections"
+            )
+            raise HTTPException(status_code=response.status_code, detail=detail)
+
     except httpx.HTTPStatusError as e:
         # This catches HTTP errors (4xx, 5xx) from the Academic Service
         logger.error(
@@ -528,7 +525,7 @@ async def list_sections(
         try:
             error_data = e.response.json()
             detail = error_data.get("detail", f"Academic service error: {e.response.status_code}")
-        except:
+        except Exception:
             detail = f"Academic service error: {e.response.status_code} - {e.response.text[:200] if e.response.text else 'No details'}"
         raise HTTPException(status_code=e.response.status_code, detail=detail)
     except httpx.RequestError as e:
@@ -561,7 +558,7 @@ async def list_sections(
 @router.post("/enrollments", response_model=EnrollmentResponse, status_code=status.HTTP_201_CREATED)
 async def enroll_in_section(
     request: EnrollmentRequest,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> EnrollmentResponse:
     """
     Enroll a student in a course section.
@@ -640,10 +637,10 @@ async def enroll_in_section(
 async def drop_enrollment(enrollment_id: UUID) -> dict[str, str]:
     """
     Drop an enrollment.
-    
+
     Args:
         enrollment_id: Enrollment UUID
-        
+
     Returns:
         dict: Confirmation message
     """
@@ -658,12 +655,12 @@ async def drop_enrollment(enrollment_id: UUID) -> dict[str, str]:
 
 @router.get("/enrollments", response_model=list[EnrollmentResponse])
 async def get_my_enrollments(
-    semester: Optional[str] = Query(None),
-    authorization: Optional[str] = Header(None),
+    semester: str | None = Query(None),
+    authorization: str | None = Header(None),
 ) -> list[EnrollmentResponse]:
     """
     Get current user's enrollments.
-    
+
     Proxies to Academic Service.
     """
     logger.info("Get my enrollments", semester=semester)
@@ -672,7 +669,7 @@ async def get_my_enrollments(
         params = {}
         if semester:
             params["semester"] = semester
-            
+
         headers = {}
         if authorization:
             headers["Authorization"] = authorization
@@ -684,20 +681,19 @@ async def get_my_enrollments(
                 headers=headers,
                 timeout=30.0
             )
-            
+
             if response.status_code == 200:
                 return response.json()
-            elif response.status_code == 404:
+            if response.status_code == 404:
                 return []  # No enrollments found
-            else:
-                try:
-                    error_data = response.json()
-                    detail = error_data.get("detail", "Failed to fetch enrollments")
-                except:
-                    detail = f"Failed to fetch enrollments: {response.text[:200]}"
-                
-                raise HTTPException(status_code=response.status_code, detail=detail)
-                
+            try:
+                error_data = response.json()
+                detail = error_data.get("detail", "Failed to fetch enrollments")
+            except Exception:
+                detail = f"Failed to fetch enrollments: {response.text[:200]}"
+
+            raise HTTPException(status_code=response.status_code, detail=detail)
+
     except httpx.RequestError as e:
         logger.error("Failed to connect to Academic Service", error=str(e))
         raise HTTPException(
@@ -711,7 +707,7 @@ async def get_my_enrollments(
 @router.post("/assignments", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_assignment(
     payload: AssignmentCreatePayload,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> AssignmentResponse:
     """Create an assignment (lecturer)."""
     try:
@@ -740,8 +736,8 @@ async def create_assignment(
 
 @router.get("/assignments", response_model=list[AssignmentResponse])
 async def list_assignments_for_lecturer(
-    authorization: Optional[str] = Header(None),
-    section_id: Optional[UUID] = Query(None),
+    authorization: str | None = Header(None),
+    section_id: UUID | None = Query(None),
 ) -> list[AssignmentResponse]:
     """List assignments for the current lecturer."""
     try:
@@ -771,7 +767,7 @@ async def list_assignments_for_lecturer(
 
 @router.get("/assignments/student", response_model=list[AssignmentResponse])
 async def list_assignments_for_student(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[AssignmentResponse]:
     """List assignments available to the current student."""
     try:
@@ -796,11 +792,11 @@ async def list_assignments_for_student(
 
 @router.get("/assignments/external-tasks", response_model=list[ExternalTaskResponse])
 async def list_external_tasks(
-    section_id: Optional[UUID] = Query(
+    section_id: UUID | None = Query(
         None,
         description="Optional section context to filter external tasks by course",
     ),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[ExternalTaskResponse]:
     """List external auto-grader tasks via Academic Service (e.g. INGInious tasks)."""
     try:
@@ -831,9 +827,9 @@ async def list_external_tasks(
 
 @router.get("/assignments/questions", response_model=list)
 async def list_questions(
-    course_id: Optional[UUID] = Query(None),
-    question_type: Optional[str] = Query(None),
-    authorization: Optional[str] = Header(None),
+    course_id: UUID | None = Query(None),
+    question_type: str | None = Query(None),
+    authorization: str | None = Header(None),
 ) -> list:
     """List questions created by the current lecturer."""
     try:
@@ -866,7 +862,7 @@ async def list_questions(
 @router.post("/assignments/questions", response_model=dict)
 async def create_question(
     payload: dict,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict:
     """Create a question (lecturer)."""
     try:
@@ -894,7 +890,7 @@ async def create_question(
 async def update_question(
     question_id: UUID,
     payload: dict,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict:
     """Update a question (lecturer)."""
     try:
@@ -921,7 +917,7 @@ async def update_question(
 @router.delete("/assignments/questions/{question_id}", response_model=dict)
 async def delete_question(
     question_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict:
     """Delete a question (lecturer)."""
     try:
@@ -948,7 +944,7 @@ async def delete_question(
 async def link_question_to_assignment(
     assignment_id: UUID,
     payload: dict,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict:
     """Link a question to an assignment (lecturer)."""
     try:
@@ -976,7 +972,7 @@ async def link_question_to_assignment(
 async def unlink_question_from_assignment(
     assignment_id: UUID,
     question_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> dict:
     """Unlink a question from an assignment (lecturer)."""
     try:
@@ -1006,7 +1002,7 @@ async def unlink_question_from_assignment(
 async def get_assignment_questions(
     assignment_id: UUID,
     lecturer_view: bool = Query(False),
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list:
     """Get questions for an assignment (student or lecturer view)."""
     try:
@@ -1042,7 +1038,7 @@ async def get_assignment_questions(
 async def submit_assignment(
     assignment_id: UUID,
     payload: dict,  # Changed to dict to accept answers array
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> SubmissionResponse:
     """Submit an assignment attempt with answers (student)."""
     try:
@@ -1073,7 +1069,7 @@ async def submit_assignment(
 )
 async def list_assignment_submissions(
     assignment_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> list[SubmissionResponse]:
     """List submissions for an assignment (lecturer)."""
     try:
@@ -1103,7 +1099,7 @@ async def list_assignment_submissions(
 async def approve_submission(
     submission_id: UUID,
     payload: dict,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> SubmissionResponse:
     """Approve an auto-graded submission (lecturer)."""
     try:

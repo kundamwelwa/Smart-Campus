@@ -5,10 +5,10 @@ Provides event sourcing, publish/subscribe, and event streaming capabilities.
 """
 
 from shared.events.base import (
-    Event,
     DomainEvent,
-    EventMetadata,
+    Event,
     EventEnvelope,
+    EventMetadata,
     Snapshot,
 )
 from shared.events.stream import (

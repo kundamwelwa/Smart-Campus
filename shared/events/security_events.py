@@ -5,7 +5,7 @@ Events related to authentication, authorization, and security incidents.
 """
 
 from datetime import datetime
-from typing import ClassVar, Optional
+from typing import ClassVar
 from uuid import UUID
 
 from pydantic import Field
@@ -21,7 +21,7 @@ class UserAuthenticatedEvent(DomainEvent):
     user_id: UUID = Field(...)
     auth_strategy: str = Field(...)
     ip_address: str = Field(...)
-    user_agent: Optional[str] = Field(default=None)
+    user_agent: str | None = Field(default=None)
     authenticated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -30,7 +30,7 @@ class AuthenticationFailedEvent(DomainEvent):
 
     EVENT_TYPE: ClassVar[str] = "security.auth.authentication_failed"
 
-    user_id: Optional[UUID] = Field(default=None)
+    user_id: UUID | None = Field(default=None)
     email: str = Field(...)
     reason: str = Field(...)
     ip_address: str = Field(...)
@@ -92,9 +92,9 @@ class SecurityIncidentEvent(DomainEvent):
     incident_type: str = Field(...)
     severity: str = Field(..., description="low, medium, high, critical")
     description: str = Field(...)
-    affected_user_id: Optional[UUID] = Field(default=None)
-    affected_resource_id: Optional[UUID] = Field(default=None)
-    ip_address: Optional[str] = Field(default=None)
+    affected_user_id: UUID | None = Field(default=None)
+    affected_resource_id: UUID | None = Field(default=None)
+    ip_address: str | None = Field(default=None)
     detected_at: datetime = Field(default_factory=datetime.utcnow)
     auto_mitigated: bool = Field(default=False)
 

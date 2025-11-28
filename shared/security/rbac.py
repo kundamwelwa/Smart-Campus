@@ -4,12 +4,12 @@ Role-Based Access Control (RBAC) and Attribute-Based Access Control (ABAC)
 Fine-grained authorization services supporting both role-based and attribute-based access control.
 """
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import structlog
 
-from shared.domain.security import Role, Permission, PermissionAction, ResourceType
+from shared.domain.security import Permission, PermissionAction, ResourceType, Role
 
 logger = structlog.get_logger(__name__)
 
@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 class RBACService:
     """
     Role-Based Access Control service.
-    
+
     Evaluates permissions based on user roles and role hierarchies.
     """
 
@@ -28,7 +28,7 @@ class RBACService:
     def load_role(self, role: Role) -> None:
         """
         Load a role into the cache.
-        
+
         Args:
             role: Role to cache
         """
@@ -39,17 +39,17 @@ class RBACService:
         user_roles: list[UUID],
         action: PermissionAction,
         resource_type: ResourceType,
-        resource_id: Optional[UUID] = None,
+        resource_id: UUID | None = None,
     ) -> bool:
         """
         Check if user has permission based on their roles.
-        
+
         Args:
             user_roles: List of role IDs assigned to user
             action: Required permission action
             resource_type: Resource type to access
             resource_id: Specific resource ID (optional)
-            
+
         Returns:
             bool: True if user has permission
         """
@@ -89,7 +89,7 @@ class RBACService:
         role: Role,
         action: PermissionAction,
         resource_type: ResourceType,
-        resource_id: Optional[UUID] = None,
+        resource_id: UUID | None = None,
     ) -> bool:
         """Recursively check permissions from inherited roles."""
         for parent_role_id in role.inherits_from:
@@ -111,10 +111,10 @@ class RBACService:
     def get_effective_permissions(self, user_roles: list[UUID]) -> list[Permission]:
         """
         Get all effective permissions for a user (including inherited).
-        
+
         Args:
             user_roles: List of role IDs
-            
+
         Returns:
             List of permissions
         """
@@ -128,8 +128,7 @@ class RBACService:
                 all_permissions.extend(self._get_inherited_permissions(role))
 
         # Remove duplicates
-        unique_permissions = list({str(p): p for p in all_permissions}.values())
-        return unique_permissions
+        return list({str(p): p for p in all_permissions}.values())
 
     def _get_inherited_permissions(self, role: Role) -> list[Permission]:
         """Recursively collect inherited permissions."""
@@ -147,7 +146,7 @@ class RBACService:
 class ABACService:
     """
     Attribute-Based Access Control service.
-    
+
     Evaluates permissions based on attributes of:
     - Subject (user attributes)
     - Resource (resource attributes)
@@ -162,7 +161,7 @@ class ABACService:
     def add_policy(self, policy: dict[str, Any]) -> None:
         """
         Add an ABAC policy.
-        
+
         Policy format:
         {
             "name": "policy_name",
@@ -175,7 +174,7 @@ class ABACService:
                 }
             ]
         }
-        
+
         Args:
             policy: Policy definition
         """
@@ -186,17 +185,17 @@ class ABACService:
         subject_attributes: dict[str, Any],
         resource_attributes: dict[str, Any],
         action: str,
-        environment_attributes: Optional[dict[str, Any]] = None,
+        environment_attributes: dict[str, Any] | None = None,
     ) -> bool:
         """
         Evaluate ABAC policies.
-        
+
         Args:
             subject_attributes: User/subject attributes
             resource_attributes: Resource attributes
             action: Action being performed
             environment_attributes: Environmental attributes (time, location, etc.)
-            
+
         Returns:
             bool: True if access is allowed
         """
@@ -240,10 +239,7 @@ class ABACService:
             return False
 
         # Check environment attributes (if specified in rule)
-        if not self._attributes_match(rule.get("environment", {}), env_attrs):
-            return False
-
-        return True
+        return self._attributes_match(rule.get("environment", {}), env_attrs)
 
     def _attributes_match(
         self, required_attrs: dict[str, Any], actual_attrs: dict[str, Any]
@@ -266,7 +262,7 @@ class ABACService:
 class AuthorizationService:
     """
     Combined authorization service using both RBAC and ABAC.
-    
+
     Evaluates permissions using both role-based and attribute-based policies,
     providing comprehensive fine-grained access control.
     """
@@ -274,7 +270,7 @@ class AuthorizationService:
     def __init__(self, rbac: RBACService, abac: ABACService):
         """
         Initialize authorization service.
-        
+
         Args:
             rbac: RBAC service instance
             abac: ABAC service instance
@@ -288,16 +284,16 @@ class AuthorizationService:
         user_roles: list[UUID],
         action: PermissionAction,
         resource_type: ResourceType,
-        resource_id: Optional[UUID] = None,
-        subject_attributes: Optional[dict[str, Any]] = None,
-        resource_attributes: Optional[dict[str, Any]] = None,
-        environment_attributes: Optional[dict[str, Any]] = None,
+        resource_id: UUID | None = None,
+        subject_attributes: dict[str, Any] | None = None,
+        resource_attributes: dict[str, Any] | None = None,
+        environment_attributes: dict[str, Any] | None = None,
     ) -> tuple[bool, str]:
         """
         Authorize an action using combined RBAC and ABAC.
-        
+
         First checks RBAC (faster), then falls back to ABAC if needed.
-        
+
         Args:
             user_id: User requesting access
             user_roles: User's role IDs
@@ -307,7 +303,7 @@ class AuthorizationService:
             subject_attributes: Additional user attributes for ABAC
             resource_attributes: Resource attributes for ABAC
             environment_attributes: Environment attributes for ABAC
-            
+
         Returns:
             Tuple of (is_authorized, reason)
         """
@@ -322,20 +318,19 @@ class AuthorizationService:
             return True, "Authorized by role-based policy"
 
         # Fall back to ABAC for fine-grained control
-        if subject_attributes and resource_attributes:
-            if self.abac.evaluate(
-                subject_attributes=subject_attributes or {},
-                resource_attributes=resource_attributes or {},
+        if subject_attributes and resource_attributes and self.abac.evaluate(
+            subject_attributes=subject_attributes or {},
+            resource_attributes=resource_attributes or {},
+            action=action.value,
+            environment_attributes=environment_attributes,
+        ):
+            logger.info(
+                "Access authorized via ABAC",
+                user_id=str(user_id),
                 action=action.value,
-                environment_attributes=environment_attributes,
-            ):
-                logger.info(
-                    "Access authorized via ABAC",
-                    user_id=str(user_id),
-                    action=action.value,
-                    resource_type=resource_type.value,
-                )
-                return True, "Authorized by attribute-based policy"
+                resource_type=resource_type.value,
+            )
+            return True, "Authorized by attribute-based policy"
 
         # Access denied
         logger.warning(
@@ -351,7 +346,7 @@ class AuthorizationService:
 def create_default_roles() -> dict[str, Role]:
     """
     Create default system roles.
-    
+
     Returns:
         dict: Dictionary of role name to Role object
     """

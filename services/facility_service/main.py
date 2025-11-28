@@ -4,21 +4,21 @@ Facility Service - Room Booking and Management
 Handles campus facilities, room booking, and resource management.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel, Field
+import structlog
+from fastapi import Depends, FastAPI, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
+from services.facility_service.api import admin, rooms
+from services.facility_service.models import RoomModel
 from shared.config import settings
-from shared.database import init_db, close_db, get_db
-from services.facility_service.models import RoomModel, BookingModel, FacilityModel
-from services.facility_service.api import rooms, admin
+from shared.database import close_db, get_db, init_db
 
 logger = structlog.get_logger(__name__)
 
@@ -48,7 +48,7 @@ app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
 
 class RoomResponse(BaseModel):
     """Room information response."""
-    
+
     id: UUID
     room_number: str
     room_type: str
@@ -62,7 +62,7 @@ class RoomResponse(BaseModel):
 
 class BookingRequest(BaseModel):
     """Room booking request."""
-    
+
     room_id: UUID
     start_time: datetime
     end_time: datetime
@@ -72,7 +72,7 @@ class BookingRequest(BaseModel):
 
 class BookingResponse(BaseModel):
     """Booking response."""
-    
+
     id: UUID
     room_id: UUID
     room_number: str
@@ -84,37 +84,37 @@ class BookingResponse(BaseModel):
 
 @app.get("/api/v1/rooms", response_model=list[RoomResponse])
 async def list_rooms(
-    building: Optional[str] = None,
-    min_capacity: Optional[int] = None,
+    building: str | None = None,
+    min_capacity: int | None = None,
     available_only: bool = False,
     db: AsyncSession = Depends(get_db),
 ) -> list[RoomResponse]:
     """
     List available rooms.
-    
+
     Args:
         building: Filter by building
         min_capacity: Minimum capacity required
         available_only: Show only available rooms
         db: Database session
-        
+
     Returns:
         List of rooms
     """
     query = select(RoomModel)
-    
+
     if building:
         query = query.where(RoomModel.building == building)
-    
+
     if min_capacity:
         query = query.where(RoomModel.capacity >= min_capacity)
-    
+
     if available_only:
-        query = query.where(RoomModel.is_available == True)
-    
+        query = query.where(RoomModel.is_available)
+
     result = await db.execute(query)
-    rooms = result.scalars().all()
-    
+    result.scalars().all()
+
     # Return simplified response (models would need to be created)
     return []  # Placeholder - full implementation would return actual rooms
 
@@ -126,21 +126,21 @@ async def create_booking(
 ) -> BookingResponse:
     """
     Create a room booking.
-    
+
     Args:
         request: Booking request
         db: Database session
-        
+
     Returns:
         Created booking
     """
     logger.info("Creating booking", room_id=str(request.room_id))
-    
+
     # TODO: Implement booking logic with conflict detection
     # - Check room availability
     # - Detect time conflicts
     # - Create booking record
-    
+
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Booking creation will be fully implemented",

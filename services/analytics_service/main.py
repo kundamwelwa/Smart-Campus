@@ -5,13 +5,14 @@ Serves machine learning models for predictions and recommendations.
 Provides explainable AI capabilities.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Optional
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
 import structlog
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 from shared.config import settings
 
@@ -20,7 +21,7 @@ try:
     from ml.models.enrollment_predictor import EnrollmentPredictor
     from ml.models.room_optimizer import RoomUsageOptimizer
     ML_AVAILABLE = True
-except ImportError as e:
+except ImportError:
     ML_AVAILABLE = False
     EnrollmentPredictor = None
     RoomUsageOptimizer = None
@@ -34,24 +35,24 @@ if not ML_AVAILABLE:
     )
 
 # Global model instances
-enrollment_predictor: Optional[EnrollmentPredictor] = None
-room_optimizer: Optional[RoomUsageOptimizer] = None
+enrollment_predictor: EnrollmentPredictor | None = None
+room_optimizer: RoomUsageOptimizer | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan - load ML models."""
     global enrollment_predictor, room_optimizer
-    
+
     logger.info("Starting Analytics Service")
-    
+
     if ML_AVAILABLE:
         logger.info("ML packages available - Loading models")
         # Load enrollment predictor
         try:
             enrollment_predictor = EnrollmentPredictor()
             model_path = Path(settings.ml_model_path) / 'enrollment_predictor.pt'
-            
+
             if model_path.exists():
                 await enrollment_predictor.load(model_path)
                 logger.info("Enrollment predictor loaded", path=str(model_path))
@@ -60,17 +61,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error("Failed to load enrollment predictor", error=str(e))
             enrollment_predictor = EnrollmentPredictor()  # Use untrained model
-        
+
         # Initialize room optimizer
         room_optimizer = RoomUsageOptimizer()
         logger.info("Room optimizer initialized")
     else:
         logger.warning("ML packages not installed - Analytics will use fallback predictions")
-    
+
     logger.info("Analytics Service ready")
-    
+
     yield
-    
+
     logger.info("Analytics Service shutdown complete")
 
 
@@ -87,7 +88,7 @@ app = FastAPI(
 # Request/Response Models
 class EnrollmentPredictionRequest(BaseModel):
     """Request for enrollment prediction."""
-    
+
     student_id: str
     gpa: float = Field(..., ge=0.0, le=4.0)
     credits_enrolled: int = Field(..., ge=0, le=24)
@@ -102,18 +103,18 @@ class EnrollmentPredictionRequest(BaseModel):
 
 class EnrollmentPredictionResponse(BaseModel):
     """Response with dropout prediction."""
-    
+
     student_id: str
     dropout_probability: float
     retention_probability: float
     risk_level: str
     confidence: float
-    explanation: Optional[dict] = None
+    explanation: dict | None = None
 
 
 class RoomOptimizationRequest(BaseModel):
     """Request for room optimization."""
-    
+
     sections: list[dict]
     rooms: list[dict]
     explain: bool = Field(default=True)
@@ -121,12 +122,12 @@ class RoomOptimizationRequest(BaseModel):
 
 class RoomOptimizationResponse(BaseModel):
     """Response with optimal room allocation."""
-    
+
     allocation: dict[int, int]
     metrics: dict[str, float]
     num_sections_allocated: int
     num_violations: int
-    explanation: Optional[dict] = None
+    explanation: dict | None = None
 
 
 @app.get("/health")
@@ -146,20 +147,20 @@ async def health_check() -> dict[str, Any]:
 async def predict_enrollment(request: EnrollmentPredictionRequest) -> EnrollmentPredictionResponse:
     """
     Predict student dropout probability - REAL ML MODEL!
-    
+
     Uses LSTM model with attention mechanism to predict dropout risk
     based on academic performance and engagement metrics.
-    
+
     Args:
         request: Prediction request with student data
-        
+
     Returns:
         Prediction with explainability
     """
     # Fallback to rule-based prediction if ML not available
     if not ML_AVAILABLE or enrollment_predictor is None:
         logger.warning("Using rule-based fallback for enrollment prediction")
-        
+
         # Simple rule-based prediction
         risk_score = (
             (1 - request.gpa / 4.0) * 0.3 +
@@ -169,16 +170,14 @@ async def predict_enrollment(request: EnrollmentPredictionRequest) -> Enrollment
             (request.previous_dropout_risk) * 0.10
         )
         risk_score = min(max(risk_score, 0.0), 1.0)
-        
-        if risk_score < 0.3:
-            risk_level = "low"
-        elif risk_score < 0.6:
-            risk_level = "medium"
+
+        if risk_score < 0.3 or risk_score < 0.6:
+            pass
         else:
-            risk_level = "high"
-        
+            pass
+
         from shared.resilience.ml_fallback import rule_based_enrollment_prediction
-        
+
         # Use enhanced rule-based prediction
         student_data = {
             "gpa": request.gpa,
@@ -190,9 +189,9 @@ async def predict_enrollment(request: EnrollmentPredictionRequest) -> Enrollment
             "study_hours": request.study_hours,
             "num_failed_courses": request.num_failed_courses,
         }
-        
+
         prediction = rule_based_enrollment_prediction(student_data)
-        
+
         return EnrollmentPredictionResponse(
             student_id=request.student_id,
             dropout_probability=prediction["dropout_probability"],
@@ -201,9 +200,9 @@ async def predict_enrollment(request: EnrollmentPredictionRequest) -> Enrollment
             confidence=prediction["confidence"],
             explanation=prediction["explanation"] if request.explain else None,
         )
-    
+
     logger.info("Enrollment prediction request", student_id=request.student_id)
-    
+
     # Prepare input data
     input_data = {
         'gpa': request.gpa,
@@ -215,22 +214,22 @@ async def predict_enrollment(request: EnrollmentPredictionRequest) -> Enrollment
         'study_hours': request.study_hours,
         'num_failed_courses': request.num_failed_courses,
     }
-    
+
     # Get prediction
     prediction = await enrollment_predictor.predict(input_data)
-    
+
     # Get explanation if requested
     explanation = None
     if request.explain:
         explanation = await enrollment_predictor.explain(input_data, prediction)
-    
+
     logger.info(
         "Prediction complete",
         student_id=request.student_id,
         dropout_prob=f"{prediction['dropout_probability']:.1%}",
         risk_level=prediction['risk_level'],
     )
-    
+
     return EnrollmentPredictionResponse(
         student_id=request.student_id,
         dropout_probability=prediction['dropout_probability'],
@@ -245,30 +244,30 @@ async def predict_enrollment(request: EnrollmentPredictionRequest) -> Enrollment
 async def optimize_room_allocation(request: RoomOptimizationRequest) -> RoomOptimizationResponse:
     """
     Optimize room allocation - REAL RL MODEL!
-    
+
     Uses PPO reinforcement learning to find optimal room assignments
     that minimize energy cost and travel time while satisfying constraints.
-    
+
     Args:
         request: Optimization request with sections and rooms
-        
+
     Returns:
         Optimal allocation with metrics
     """
     # Fallback to rule-based allocation if ML not available
     if not ML_AVAILABLE or room_optimizer is None:
         logger.warning("Using rule-based fallback for room optimization")
-        
+
         from shared.resilience.ml_fallback import rule_based_room_optimization
-        
+
         # Use enhanced rule-based optimization
         request_data = {
             "sections": request.sections,
             "rooms": request.rooms,
         }
-        
+
         result = rule_based_room_optimization(request_data)
-        
+
         return RoomOptimizationResponse(
             allocation=result["allocation"],
             metrics=result["metrics"],
@@ -276,33 +275,33 @@ async def optimize_room_allocation(request: RoomOptimizationRequest) -> RoomOpti
             num_violations=result["num_violations"],
             explanation=result["explanation"] if request.explain else None,
         )
-    
+
     logger.info(
         "Room optimization request",
         num_sections=len(request.sections),
         num_rooms=len(request.rooms),
     )
-    
+
     # Prepare input data
     input_data = {
         'sections': request.sections,
         'rooms': request.rooms,
     }
-    
+
     # Get optimization
     result = await room_optimizer.predict(input_data)
-    
+
     # Get explanation if requested
     explanation = None
     if request.explain:
         explanation = await room_optimizer.explain(input_data, result)
-    
+
     logger.info(
         "Optimization complete",
         sections_allocated=result['num_sections_allocated'],
         violations=result['num_violations'],
     )
-    
+
     return RoomOptimizationResponse(
         allocation=result['allocation'],
         metrics=result['metrics'],

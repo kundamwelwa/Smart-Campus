@@ -5,17 +5,16 @@ MongoDB-based append-only event store with replay and snapshotting capabilities.
 Provides the foundation for event sourcing and CQRS patterns.
 """
 
-import hashlib
-import json
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Optional, Any, AsyncIterator
+from typing import Any
 from uuid import UUID
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
 import structlog
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 
-from shared.events.base import Event, EventEnvelope, Snapshot
 from shared.config import settings
+from shared.events.base import Event, EventEnvelope, Snapshot
 
 logger = structlog.get_logger(__name__)
 
@@ -23,7 +22,7 @@ logger = structlog.get_logger(__name__)
 class EventStore:
     """
     Append-only event store for event sourcing.
-    
+
     Features:
     - Guaranteed ordering within aggregate streams
     - Optimistic concurrency control
@@ -34,7 +33,7 @@ class EventStore:
     def __init__(self, mongodb_client: AsyncIOMotorClient) -> None:
         """
         Initialize event store.
-        
+
         Args:
             mongodb_client: MongoDB async client
         """
@@ -70,19 +69,19 @@ class EventStore:
         self,
         event: Event,
         stream_id: str,
-        expected_version: Optional[int] = None,
+        expected_version: int | None = None,
     ) -> EventEnvelope:
         """
         Append an event to the store.
-        
+
         Args:
             event: Event to append
             stream_id: Event stream identifier
             expected_version: Expected current version for optimistic concurrency control
-            
+
         Returns:
             EventEnvelope: Stored event envelope
-            
+
         Raises:
             ConcurrencyError: If expected version doesn't match
         """
@@ -136,16 +135,16 @@ class EventStore:
         return result["stream_position"]
 
     async def get_stream(
-        self, stream_id: str, from_position: int = 0, to_position: Optional[int] = None
+        self, stream_id: str, from_position: int = 0, to_position: int | None = None
     ) -> AsyncIterator[EventEnvelope]:
         """
         Get events from a stream.
-        
+
         Args:
             stream_id: Stream identifier
             from_position: Starting position (inclusive)
             to_position: Ending position (inclusive, None = all)
-            
+
         Yields:
             EventEnvelope: Events in order
         """
@@ -164,11 +163,11 @@ class EventStore:
     ) -> AsyncIterator[EventEnvelope]:
         """
         Get all events for a specific aggregate.
-        
+
         Args:
             aggregate_id: Aggregate root ID
             from_version: Starting version number
-            
+
         Yields:
             EventEnvelope: Events for the aggregate
         """
@@ -185,7 +184,7 @@ class EventStore:
     async def save_snapshot(self, snapshot: Snapshot) -> None:
         """
         Save an aggregate snapshot.
-        
+
         Args:
             snapshot: Snapshot to save
         """
@@ -210,13 +209,13 @@ class EventStore:
 
     async def get_latest_snapshot(
         self, aggregate_id: UUID
-    ) -> Optional[Snapshot]:
+    ) -> Snapshot | None:
         """
         Get the latest snapshot for an aggregate.
-        
+
         Args:
             aggregate_id: Aggregate root ID
-            
+
         Returns:
             Snapshot or None if no snapshot exists
         """
@@ -230,15 +229,15 @@ class EventStore:
         return self._doc_to_snapshot(result)
 
     async def replay_aggregate(
-        self, aggregate_id: UUID, up_to_version: Optional[int] = None
-    ) -> tuple[Optional[Snapshot], list[EventEnvelope]]:
+        self, aggregate_id: UUID, up_to_version: int | None = None
+    ) -> tuple[Snapshot | None, list[EventEnvelope]]:
         """
         Replay an aggregate's event stream with snapshot optimization.
-        
+
         Args:
             aggregate_id: Aggregate root ID
             up_to_version: Replay up to this version (None = all)
-            
+
         Returns:
             Tuple of (latest_snapshot, subsequent_events)
         """
@@ -266,20 +265,20 @@ class EventStore:
 
     async def get_all_events(
         self,
-        from_timestamp: Optional[datetime] = None,
-        to_timestamp: Optional[datetime] = None,
-        event_types: Optional[list[str]] = None,
+        from_timestamp: datetime | None = None,
+        to_timestamp: datetime | None = None,
+        event_types: list[str] | None = None,
         limit: int = 1000,
     ) -> list[EventEnvelope]:
         """
         Get events with filtering.
-        
+
         Args:
             from_timestamp: Start time (inclusive)
             to_timestamp: End time (inclusive)
             event_types: Filter by event types
             limit: Maximum number of events
-            
+
         Returns:
             List of event envelopes
         """
@@ -318,20 +317,19 @@ class EventStore:
 class ConcurrencyError(Exception):
     """Raised when optimistic concurrency check fails."""
 
-    pass
 
 
 class EventPublisher:
     """
     Event publisher for distributing events to message brokers.
-    
+
     Publishes stored events to Kafka for downstream consumption.
     """
 
     def __init__(self, kafka_producer: Any) -> None:
         """
         Initialize event publisher.
-        
+
         Args:
             kafka_producer: Kafka producer instance
         """
@@ -340,13 +338,13 @@ class EventPublisher:
     async def publish(self, envelope: EventEnvelope) -> None:
         """
         Publish event to Kafka.
-        
+
         Args:
             envelope: Event envelope to publish
         """
         topic = self._get_topic_for_event(envelope.event_type)
 
-        message = {
+        {
             "event_id": str(envelope.id),
             "event_type": envelope.event_type,
             "data": envelope.event_data,
@@ -366,10 +364,10 @@ class EventPublisher:
     def _get_topic_for_event(self, event_type: str) -> str:
         """
         Determine Kafka topic based on event type.
-        
+
         Args:
             event_type: Event type (e.g., 'academic.enrollment.student_enrolled')
-            
+
         Returns:
             str: Kafka topic name
         """

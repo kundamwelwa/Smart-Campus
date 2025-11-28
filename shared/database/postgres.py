@@ -4,11 +4,11 @@ PostgreSQL Database Connection
 Async SQLAlchemy setup for PostgreSQL operations.
 """
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 from shared.config import settings
 
@@ -18,7 +18,6 @@ logger = structlog.get_logger(__name__)
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
 
-    pass
 
 
 # Create async engine
@@ -43,7 +42,7 @@ AsyncSessionLocal = async_sessionmaker(
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency for getting database session.
-    
+
     Yields:
         AsyncSession: Database session
     """

@@ -6,18 +6,16 @@ analytics integrity. Supports both full deletion and pseudonymization modes.
 """
 
 import hashlib
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.entities import Person
-from shared.events.security_events import DataErasureRequestEvent, DataErasureCompletedEvent
-from shared.events.stream import EventStream, get_event_stream_manager
-from shared.security.audit import AuditLogEntry, AuditAction, AuditSeverity
+from shared.events.security_events import DataErasureCompletedEvent, DataErasureRequestEvent
+from shared.events.stream import get_event_stream_manager
+from shared.security.audit import AuditAction, AuditLogEntry
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +23,7 @@ logger = structlog.get_logger(__name__)
 class GDPRDataErasureService:
     """
     Service for GDPR-compliant data erasure and pseudonymization.
-    
+
     Supports:
     - Full deletion (removes all personal data)
     - Pseudonymization (replaces PII with anonymized identifiers, preserves analytics)
@@ -34,7 +32,7 @@ class GDPRDataErasureService:
     def __init__(self, db: AsyncSession):
         """
         Initialize GDPR erasure service.
-        
+
         Args:
             db: Database session
         """
@@ -47,16 +45,16 @@ class GDPRDataErasureService:
         requested_by: UUID,
         scope: str = "pseudonymize",
         reason: str = "GDPR Right to be Forgotten",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Request data erasure for a student.
-        
+
         Args:
             data_subject_id: Student/user ID to erase
             requested_by: User making the request
             scope: "delete" (full deletion) or "pseudonymize" (anonymize, preserve analytics)
             reason: Reason for erasure
-            
+
         Returns:
             Dictionary with erasure request details
         """
@@ -93,23 +91,23 @@ class GDPRDataErasureService:
 
         return result
 
-    async def _pseudonymize(self, student_id: UUID, requested_by: UUID) -> Dict[str, Any]:
+    async def _pseudonymize(self, student_id: UUID, requested_by: UUID) -> dict[str, Any]:
         """
         Pseudonymize student data (preserve analytics integrity).
-        
+
         Replaces PII with anonymized identifiers while maintaining:
         - Referential integrity (foreign keys)
         - Analytics data (grades, enrollments aggregated)
         - System functionality
-        
+
         Args:
             student_id: Student ID to pseudonymize
             requested_by: User making the request
-            
+
         Returns:
             Dictionary with pseudonymization results
         """
-        from services.user_service.models import UserModel, StudentModel
+        from services.user_service.models import StudentModel, UserModel
 
         records_affected = 0
 
@@ -122,18 +120,18 @@ class GDPRDataErasureService:
         if user:
             # Generate pseudonymized identifiers
             pseudonym_id = self._generate_pseudonym(student_id)
-            
+
             # Update user with pseudonymized data
             user.email = f"user-{pseudonym_id}@pseudonymized.local"
             user.first_name = "User"
             user.last_name = pseudonym_id[:8]
             user.middle_name = None
             user.is_pseudonymized = True
-            
+
             # Clear sensitive fields
             user.phone_number = None
             user.date_of_birth = None
-            
+
             records_affected += 1
 
         # Pseudonymize Student record
@@ -151,7 +149,7 @@ class GDPRDataErasureService:
         await self.db.commit()
 
         # Create audit log entry
-        audit_entry = AuditLogEntry.create(
+        AuditLogEntry.create(
             action=AuditAction.UPDATE,
             resource_type="user",
             resource_id=student_id,
@@ -178,22 +176,22 @@ class GDPRDataErasureService:
             "analytics_preserved": True,
         }
 
-    async def _full_deletion(self, student_id: UUID, requested_by: UUID) -> Dict[str, Any]:
+    async def _full_deletion(self, student_id: UUID, requested_by: UUID) -> dict[str, Any]:
         """
         Perform full deletion of student data.
-        
+
         WARNING: This removes all personal data. Analytics data may be aggregated
         and preserved for statistical purposes (anonymized).
-        
+
         Args:
             student_id: Student ID to delete
             requested_by: User making the request
-            
+
         Returns:
             Dictionary with deletion results
         """
-        from services.user_service.models import UserModel, StudentModel
         from services.academic_service.models import EnrollmentModel, GradeModel
+        from services.user_service.models import StudentModel, UserModel
 
         records_affected = 0
 
@@ -237,7 +235,7 @@ class GDPRDataErasureService:
         await self.db.commit()
 
         # Create audit log entry
-        audit_entry = AuditLogEntry.create(
+        AuditLogEntry.create(
             action=AuditAction.DELETE,
             resource_type="user",
             resource_id=student_id,
@@ -265,29 +263,28 @@ class GDPRDataErasureService:
     def _generate_pseudonym(self, user_id: UUID) -> str:
         """
         Generate a deterministic pseudonym for a user ID.
-        
+
         Uses SHA-256 hash to create consistent pseudonym that can be
         used for analytics while maintaining anonymity.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             Pseudonym string (hex digest)
         """
         # Use salt + user_id for pseudonym generation
         salt = b"gdpr_pseudonym_salt_v1"  # In production, use secure salt from config
         hash_input = salt + user_id.bytes
-        pseudonym = hashlib.sha256(hash_input).hexdigest()[:16]
-        return pseudonym
+        return hashlib.sha256(hash_input).hexdigest()[:16]
 
-    async def verify_erasure(self, student_id: UUID) -> Dict[str, Any]:
+    async def verify_erasure(self, student_id: UUID) -> dict[str, Any]:
         """
         Verify that data erasure was completed successfully.
-        
+
         Args:
             student_id: Student ID to verify
-            
+
         Returns:
             Dictionary with verification results
         """

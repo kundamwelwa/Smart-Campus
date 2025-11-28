@@ -5,17 +5,16 @@ CRUD operations for user management.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, status
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from shared.database import get_db
-from services.user_service.repository import UserRepository
 from services.user_service.dependencies import get_current_user
+from services.user_service.repository import UserRepository
+from shared.database import get_db
 
 logger = structlog.get_logger(__name__)
 
@@ -36,7 +35,7 @@ class UserProfileResponse(BaseModel):
     is_active: bool
     email_verified: bool
     created_at: datetime
-    last_login_at: Optional[datetime]
+    last_login_at: datetime | None
 
 
 @router.get("/me", response_model=UserProfileResponse)
@@ -45,7 +44,7 @@ async def get_current_user_profile(
 ) -> UserProfileResponse:
     """
     Get current authenticated user's profile.
-    
+
     Returns:
         UserProfileResponse: User profile
     """
@@ -71,14 +70,14 @@ async def get_user_by_id(
 ) -> UserProfileResponse:
     """
     Get user by ID (admin only).
-    
+
     Args:
         user_id: User UUID
         db: Database session
-        
+
     Returns:
         UserProfileResponse: User profile
-        
+
     Raises:
         HTTPException: If user not found
     """

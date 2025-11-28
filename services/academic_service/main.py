@@ -1,14 +1,22 @@
 """Academic Service Main Application"""
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
 import structlog
+from fastapi import FastAPI
 
+from services.academic_service.api import (
+    admin,
+    assignments,
+    courses,
+    enrollments,
+    grades,
+    lecturer,
+    sections,
+)
 from shared.config import settings
 from shared.database import init_db, init_mongodb
-from services.academic_service.api import courses, sections, enrollments, lecturer, admin, grades, assignments
 
 logger = structlog.get_logger(__name__)
 
@@ -17,7 +25,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     logger.info("Starting Academic Service")
-    
+
     # Retry database connection with backoff
     for attempt in range(5):
         try:
@@ -32,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await asyncio.sleep(wait_time)
             else:
                 logger.error("Failed to connect to databases after 5 attempts - starting anyway")
-    
+
     yield
     logger.info("Academic Service shutdown complete")
 

@@ -5,13 +5,12 @@ Foundation for event-sourced aggregates implementing Domain-Driven Design patter
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, TypeVar, Generic
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, Field
 import structlog
 
-from shared.events.base import DomainEvent, EventMetadata
+from shared.events.base import DomainEvent
 
 logger = structlog.get_logger(__name__)
 
@@ -21,7 +20,7 @@ TEvent = TypeVar("TEvent", bound=DomainEvent)
 class AggregateRoot(ABC, Generic[TEvent]):
     """
     Abstract aggregate root for event sourcing.
-    
+
     Aggregates:
     - Maintain their state by applying events
     - Generate domain events for state changes
@@ -32,7 +31,7 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def __init__(self, aggregate_id: UUID):
         """
         Initialize aggregate.
-        
+
         Args:
             aggregate_id: Unique identifier for this aggregate
         """
@@ -44,32 +43,30 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def apply_event(self, event: TEvent) -> None:
         """
         Apply an event to update aggregate state.
-        
+
         This method should be pure - only update state based on event data.
         No side effects or business logic validation.
-        
+
         Args:
             event: Domain event to apply
         """
-        pass
 
     @classmethod
     @abstractmethod
     def aggregate_type(cls) -> str:
         """
         Get aggregate type identifier.
-        
+
         Returns:
             str: Aggregate type name
         """
-        pass
 
     def raise_event(self, event: TEvent) -> None:
         """
         Raise a new domain event.
-        
+
         Applies the event to current state and adds to uncommitted events.
-        
+
         Args:
             event: Domain event to raise
         """
@@ -92,7 +89,7 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def get_uncommitted_events(self) -> list[DomainEvent]:
         """
         Get events that haven't been committed to event store.
-        
+
         Returns:
             list: Uncommitted domain events
         """
@@ -101,7 +98,7 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def mark_events_committed(self) -> None:
         """
         Mark all uncommitted events as committed.
-        
+
         Called after events are successfully persisted to event store.
         """
         event_count = len(self.uncommitted_events)
@@ -118,13 +115,13 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def replay(cls, aggregate_id: UUID, events: list[TEvent]) -> "AggregateRoot[TEvent]":
         """
         Rebuild aggregate from event stream.
-        
+
         Creates a new aggregate instance and applies all events in order.
-        
+
         Args:
             aggregate_id: Aggregate UUID
             events: Ordered list of domain events
-            
+
         Returns:
             Rebuilt aggregate instance
         """
@@ -148,9 +145,9 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def get_state(self) -> dict[str, Any]:
         """
         Get current aggregate state for snapshotting.
-        
+
         Subclasses should override to provide complete state serialization.
-        
+
         Returns:
             dict: Serialized state
         """
@@ -163,12 +160,12 @@ class AggregateRoot(ABC, Generic[TEvent]):
     def from_snapshot(cls, snapshot_data: dict[str, Any]) -> "AggregateRoot[TEvent]":
         """
         Restore aggregate from snapshot.
-        
+
         Subclasses should override to restore from snapshot data.
-        
+
         Args:
             snapshot_data: Snapshot state dictionary
-            
+
         Returns:
             Restored aggregate instance
         """

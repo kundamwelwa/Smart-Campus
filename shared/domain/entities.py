@@ -12,14 +12,13 @@ Features:
 - Immutability patterns where appropriate
 """
 
-import hashlib
 from abc import ABC, abstractmethod
-from datetime import datetime, date
+from datetime import date, datetime
 from enum import Enum
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EntityStatus(str, Enum):
@@ -35,10 +34,10 @@ class EntityStatus(str, Enum):
 class AbstractEntity(BaseModel, ABC):
     """
     Base abstract entity class providing universal ID and lifecycle management.
-    
+
     All domain entities inherit from this class, establishing a consistent
     identity and lifecycle pattern across the entire system.
-    
+
     Level 1 of inheritance hierarchy.
     """
 
@@ -67,20 +66,19 @@ class AbstractEntity(BaseModel, ABC):
         """Equality based on entity ID and type."""
         if not isinstance(other, AbstractEntity):
             return NotImplemented
-        return self.id == other.id and type(self) == type(other)
+        return self.id == other.id and isinstance(other, type(self))
 
     @abstractmethod
     def validate_business_rules(self) -> bool:
         """
         Validate entity-specific business rules.
-        
+
         Returns:
             bool: True if all business rules are satisfied
-            
+
         Raises:
             ValueError: If business rules are violated
         """
-        pass
 
     def mark_updated(self) -> None:
         """Update the updated_at timestamp."""
@@ -110,10 +108,10 @@ class AbstractEntity(BaseModel, ABC):
 class VersionedEntity(AbstractEntity, ABC):
     """
     Entity with schema versioning support.
-    
+
     Enables schema evolution and backward compatibility through version tracking.
     Supports migration between versions.
-    
+
     Level 2 of inheritance hierarchy.
     """
 
@@ -136,7 +134,7 @@ class VersionedEntity(AbstractEntity, ABC):
     def migrate_to_latest(self) -> None:
         """
         Migrate entity to latest schema version.
-        
+
         Subclasses should override this to implement specific migrations.
         """
         if not self.needs_migration():
@@ -156,20 +154,20 @@ class VersionedEntity(AbstractEntity, ABC):
 class AuditableEntity(VersionedEntity, ABC):
     """
     Entity with comprehensive audit trail support.
-    
+
     Tracks creation, modification, and access patterns for compliance
     and security purposes. Integrates with tamper-evident audit log system.
-    
+
     Level 3 of inheritance hierarchy.
     """
 
-    created_by: Optional[UUID] = Field(default=None, description="Creator user ID")
-    updated_by: Optional[UUID] = Field(default=None, description="Last updater user ID")
+    created_by: UUID | None = Field(default=None, description="Creator user ID")
+    updated_by: UUID | None = Field(default=None, description="Last updater user ID")
     access_count: int = Field(default=0, description="Number of times accessed")
-    last_accessed_at: Optional[datetime] = Field(
+    last_accessed_at: datetime | None = Field(
         default=None, description="Last access timestamp"
     )
-    last_accessed_by: Optional[UUID] = Field(default=None, description="Last accessor user ID")
+    last_accessed_by: UUID | None = Field(default=None, description="Last accessor user ID")
 
     def record_creation(self, user_id: UUID) -> None:
         """Record entity creation by a user."""
@@ -207,10 +205,10 @@ class AuditableEntity(VersionedEntity, ABC):
 class Person(AuditableEntity, ABC):
     """
     Abstract base class for all person entities in the system.
-    
+
     Supports dynamic role attachments at runtime, allowing flexible
     role-based access control and multi-role users (e.g., Student who is also a TA).
-    
+
     Level 4 of inheritance hierarchy.
     """
 
@@ -218,9 +216,9 @@ class Person(AuditableEntity, ABC):
     email: str = Field(..., description="Primary email address")
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    middle_name: Optional[str] = Field(default=None, max_length=100)
-    date_of_birth: Optional[date] = Field(default=None)
-    phone_number: Optional[str] = Field(default=None, max_length=20)
+    middle_name: str | None = Field(default=None, max_length=100)
+    date_of_birth: date | None = Field(default=None)
+    phone_number: str | None = Field(default=None, max_length=20)
 
     # Dynamic Role Attachments
     attached_roles: list[str] = Field(
@@ -233,7 +231,7 @@ class Person(AuditableEntity, ABC):
         default=False, description="Whether personal data has been pseudonymized"
     )
     consent_given: bool = Field(default=False, description="User consent for data processing")
-    data_retention_until: Optional[datetime] = Field(
+    data_retention_until: datetime | None = Field(
         default=None, description="Data retention expiry date"
     )
 
@@ -262,7 +260,7 @@ class Person(AuditableEntity, ABC):
     def attach_role(self, role: str) -> None:
         """
         Dynamically attach a new role to this person at runtime.
-        
+
         Args:
             role: Role identifier to attach (e.g., 'TA', 'Researcher')
         """
@@ -283,11 +281,11 @@ class Person(AuditableEntity, ABC):
     def pseudonymize(self) -> None:
         """
         Pseudonymize personal data for GDPR compliance.
-        
+
         Replaces identifiable information with anonymized placeholders
         while maintaining referential integrity for analytics.
         """
-        self.first_name = f"User"
+        self.first_name = "User"
         self.last_name = self.id.hex[:8]
         self.middle_name = None
         self.email = f"user-{self.id.hex[:8]}@pseudonymized.local"
@@ -300,15 +298,15 @@ class Person(AuditableEntity, ABC):
 class Student(Person):
     """
     Student entity representing enrolled learners.
-    
+
     Level 5 of inheritance hierarchy (5+ levels achieved).
     """
 
     student_id: str = Field(..., description="University student ID")
     enrollment_date: date = Field(default_factory=date.today)
-    expected_graduation_date: Optional[date] = Field(default=None)
-    major: Optional[str] = Field(default=None, max_length=100)
-    minor: Optional[str] = Field(default=None, max_length=100)
+    expected_graduation_date: date | None = Field(default=None)
+    major: str | None = Field(default=None, max_length=100)
+    minor: str | None = Field(default=None, max_length=100)
     gpa: float = Field(default=0.0, ge=0.0, le=4.0)
     credits_earned: int = Field(default=0, ge=0)
     academic_standing: str = Field(
@@ -351,14 +349,14 @@ class Student(Person):
 class Lecturer(Person):
     """
     Lecturer/Professor entity representing teaching staff.
-    
+
     Level 5 of inheritance hierarchy.
     """
 
     employee_id: str = Field(..., description="Employee identifier")
     department: str = Field(..., max_length=100)
     title: str = Field(default="Lecturer", max_length=100)
-    office_location: Optional[str] = Field(default=None, max_length=200)
+    office_location: str | None = Field(default=None, max_length=200)
     specialization: list[str] = Field(default_factory=list)
     tenure_status: bool = Field(default=False)
     hire_date: date = Field(default_factory=date.today)
@@ -374,14 +372,14 @@ class Lecturer(Person):
 class Staff(Person):
     """
     Administrative and support staff entity.
-    
+
     Level 5 of inheritance hierarchy.
     """
 
     employee_id: str = Field(..., description="Employee identifier")
     department: str = Field(..., max_length=100)
     job_title: str = Field(..., max_length=100)
-    office_location: Optional[str] = Field(default=None, max_length=200)
+    office_location: str | None = Field(default=None, max_length=200)
     hire_date: date = Field(default_factory=date.today)
     clearance_level: int = Field(default=1, ge=1, le=5, description="Security clearance level")
 
@@ -395,16 +393,16 @@ class Staff(Person):
 class Guest(Person):
     """
     Guest/Visitor entity with temporary access.
-    
+
     Level 5 of inheritance hierarchy.
     """
 
     visitor_id: str = Field(..., description="Temporary visitor ID")
-    host_id: Optional[UUID] = Field(default=None, description="Host person ID")
+    host_id: UUID | None = Field(default=None, description="Host person ID")
     visit_purpose: str = Field(..., max_length=500)
     valid_from: datetime = Field(default_factory=datetime.utcnow)
     valid_until: datetime = Field(..., description="Access expiry time")
-    sponsored_by: Optional[UUID] = Field(default=None, description="Sponsor user ID")
+    sponsored_by: UUID | None = Field(default=None, description="Sponsor user ID")
 
     def validate_business_rules(self) -> bool:
         """Validate guest-specific business rules."""
@@ -428,7 +426,7 @@ class Guest(Person):
 class Admin(Person):
     """
     Administrator entity with elevated privileges.
-    
+
     Level 5 of inheritance hierarchy.
     """
 
@@ -453,10 +451,10 @@ class Admin(Person):
     def has_permission(self, resource: str) -> bool:
         """
         Check if admin has permission to manage a specific resource.
-        
+
         Args:
             resource: Resource type (users/courses/facilities/security)
-            
+
         Returns:
             bool: True if admin has permission
         """

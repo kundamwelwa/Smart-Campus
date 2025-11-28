@@ -5,14 +5,11 @@ Demonstrates concurrent service communication between EnrollmentService and Sche
 Services communicate via events and HTTP/gRPC.
 """
 
-import asyncio
-from typing import Optional, Dict, Any
-from uuid import UUID
 import httpx
 import structlog
 
-from shared.events.stream import EventStream, EventSubscriber, get_event_stream_manager
-from shared.events.academic_events import StudentEnrolledEvent, SectionCreatedEvent
+from shared.events.academic_events import SectionCreatedEvent, StudentEnrolledEvent
+from shared.events.stream import EventSubscriber, get_event_stream_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -20,14 +17,14 @@ logger = structlog.get_logger(__name__)
 class EnrollmentEventSubscriber(EventSubscriber):
     """
     Scheduler service subscriber for enrollment events.
-    
+
     Listens to enrollment events and updates timetable accordingly.
     """
 
     def __init__(self, scheduler_service_url: str):
         """
         Initialize subscriber.
-        
+
         Args:
             scheduler_service_url: Base URL of scheduler service
         """
@@ -48,7 +45,7 @@ class EnrollmentEventSubscriber(EventSubscriber):
             student_id=str(event.student_id),
             section_id=str(event.section_id),
         )
-        
+
         # Notify scheduler service about enrollment
         # This could trigger timetable recalculation if needed
         try:
@@ -71,7 +68,7 @@ class EnrollmentEventSubscriber(EventSubscriber):
             section_id=str(event.section_id),
             course_code=event.course_code,
         )
-        
+
         # Request timetable generation for new section
         try:
             response = await self.http_client.post(
@@ -88,8 +85,8 @@ class EnrollmentEventSubscriber(EventSubscriber):
     def get_subscribed_event_types(self) -> list:
         """Get subscribed event types."""
         from shared.events.academic_events import (
-            StudentEnrolledEvent,
             SectionCreatedEvent,
+            StudentEnrolledEvent,
         )
         return [StudentEnrolledEvent, SectionCreatedEvent]
 
@@ -100,23 +97,23 @@ async def setup_scheduler_enrollment_integration(
 ) -> None:
     """
     Set up integration between enrollment and scheduler services.
-    
+
     Args:
         scheduler_service_url: Scheduler service URL
         event_stream_id: Event stream identifier
     """
     stream_manager = get_event_stream_manager()
     event_stream = stream_manager.get_or_create_stream(event_stream_id)
-    
+
     # Create and register subscriber
     subscriber = EnrollmentEventSubscriber(scheduler_service_url)
-    
+
     # Subscribe to enrollment events
-    from shared.events.academic_events import StudentEnrolledEvent, SectionCreatedEvent
-    
+    from shared.events.academic_events import SectionCreatedEvent, StudentEnrolledEvent
+
     event_stream.subscribe(StudentEnrolledEvent, subscriber)
     event_stream.subscribe(SectionCreatedEvent, subscriber)
-    
+
     logger.info(
         "Scheduler-Enrollment integration established",
         scheduler_url=scheduler_service_url,

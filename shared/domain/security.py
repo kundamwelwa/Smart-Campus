@@ -8,10 +8,10 @@ Supports pluggable auth strategies, RBAC, and ABAC.
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, Any
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.domain.entities import VersionedEntity
 
@@ -56,7 +56,7 @@ class ResourceType(str, Enum):
 class Credential(BaseModel, ABC):
     """
     Abstract base credential for pluggable authentication strategies.
-    
+
     Supports multiple auth methods through strategy pattern.
     """
 
@@ -66,21 +66,20 @@ class Credential(BaseModel, ABC):
     strategy: AuthStrategy = Field(...)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_used_at: Optional[datetime] = Field(default=None)
-    expires_at: Optional[datetime] = Field(default=None)
+    last_used_at: datetime | None = Field(default=None)
+    expires_at: datetime | None = Field(default=None)
 
     @abstractmethod
     def verify(self, challenge: Any) -> bool:
         """
         Verify the credential against a challenge.
-        
+
         Args:
             challenge: Authentication challenge (password, token, etc.)
-            
+
         Returns:
             bool: True if verification succeeds
         """
-        pass
 
     def is_expired(self) -> bool:
         """Check if credential has expired."""
@@ -102,12 +101,12 @@ class PasswordCredential(Credential):
     password_changed_at: datetime = Field(default_factory=datetime.utcnow)
     must_change_password: bool = Field(default=False)
     failed_attempts: int = Field(default=0, ge=0)
-    locked_until: Optional[datetime] = Field(default=None)
+    locked_until: datetime | None = Field(default=None)
 
     def verify(self, challenge: Any) -> bool:
         """
         Verify password credential.
-        
+
         Note: Actual password hashing/verification happens in auth service.
         This is a domain model placeholder.
         """
@@ -139,9 +138,9 @@ class OAuthCredential(Credential):
     strategy: AuthStrategy = Field(default=AuthStrategy.OAUTH)
     provider: str = Field(..., description="OAuth provider (google, microsoft, github, etc.)")
     provider_user_id: str = Field(..., description="User ID from OAuth provider")
-    access_token: Optional[str] = Field(default=None)
-    refresh_token: Optional[str] = Field(default=None)
-    token_expires_at: Optional[datetime] = Field(default=None)
+    access_token: str | None = Field(default=None)
+    refresh_token: str | None = Field(default=None)
+    token_expires_at: datetime | None = Field(default=None)
 
     def verify(self, challenge: Any) -> bool:
         """Verify OAuth credential (token validation)."""
@@ -152,7 +151,7 @@ class OAuthCredential(Credential):
 class CertificateCredential(Credential):
     """
     Certificate-based authentication credential.
-    
+
     Supports X.509 certificates for strong authentication.
     """
 
@@ -163,26 +162,24 @@ class CertificateCredential(Credential):
     subject: str = Field(..., description="Certificate subject (CN)")
     valid_from: datetime = Field(..., description="Certificate validity start")
     valid_until: datetime = Field(..., description="Certificate validity end")
-    certificate_pem: Optional[str] = Field(
+    certificate_pem: str | None = Field(
         default=None, description="PEM-encoded certificate (encrypted storage)"
     )
 
     def verify(self, challenge: Any) -> bool:
         """
         Verify certificate credential.
-        
+
         Args:
             challenge: Certificate or signature to verify
-            
+
         Returns:
             bool: True if certificate is valid
         """
         # Certificate verification happens in auth service
         # This checks expiration and basic validity
         now = datetime.utcnow()
-        if now < self.valid_from or now > self.valid_until:
-            return False
-        return True  # Placeholder - actual verification in auth service
+        return not (now < self.valid_from or now > self.valid_until)  # Placeholder - actual verification in auth service
 
     def is_certificate_valid(self) -> bool:
         """Check if certificate is within validity period."""
@@ -193,7 +190,7 @@ class CertificateCredential(Credential):
 class Permission(BaseModel):
     """
     Fine-grained permission for RBAC/ABAC.
-    
+
     Represents a specific action on a specific resource type.
     """
 
@@ -201,7 +198,7 @@ class Permission(BaseModel):
 
     action: PermissionAction = Field(...)
     resource_type: ResourceType = Field(...)
-    resource_id: Optional[UUID] = Field(
+    resource_id: UUID | None = Field(
         default=None, description="Specific resource ID (None = all)"
     )
     conditions: dict[str, Any] = Field(
@@ -215,16 +212,16 @@ class Permission(BaseModel):
         return f"{self.action.value}:{self.resource_type.value}"
 
     def matches(
-        self, action: PermissionAction, resource_type: ResourceType, resource_id: Optional[UUID] = None
+        self, action: PermissionAction, resource_type: ResourceType, resource_id: UUID | None = None
     ) -> bool:
         """
         Check if this permission matches the requested action.
-        
+
         Args:
             action: Requested action
             resource_type: Requested resource type
             resource_id: Specific resource ID (optional)
-            
+
         Returns:
             bool: True if permission matches
         """
@@ -242,7 +239,7 @@ class Permission(BaseModel):
 class Role(VersionedEntity):
     """
     Role entity for RBAC (Role-Based Access Control).
-    
+
     Roles group permissions and can be hierarchical.
     """
 
@@ -265,16 +262,16 @@ class Role(VersionedEntity):
         self,
         action: PermissionAction,
         resource_type: ResourceType,
-        resource_id: Optional[UUID] = None,
+        resource_id: UUID | None = None,
     ) -> bool:
         """
         Check if role has a specific permission.
-        
+
         Args:
             action: Permission action
             resource_type: Resource type
             resource_id: Specific resource ID (optional)
-            
+
         Returns:
             bool: True if role has permission
         """
@@ -298,7 +295,7 @@ class Role(VersionedEntity):
 class AuthToken(BaseModel):
     """
     Authentication token (JWT-based).
-    
+
     Represents an active session token for authenticated users.
     """
 
@@ -310,8 +307,8 @@ class AuthToken(BaseModel):
     issued_at: datetime = Field(default_factory=datetime.utcnow)
     expires_at: datetime = Field(...)
     scopes: list[str] = Field(default_factory=list, description="Token scopes")
-    ip_address: Optional[str] = Field(default=None, description="Issuing IP address")
-    user_agent: Optional[str] = Field(default=None, description="Issuing user agent")
+    ip_address: str | None = Field(default=None, description="Issuing IP address")
+    user_agent: str | None = Field(default=None, description="Issuing user agent")
 
     def is_expired(self) -> bool:
         """Check if token has expired."""
@@ -323,16 +320,16 @@ class AuthToken(BaseModel):
 
     @classmethod
     def create_access_token(
-        cls, user_id: UUID, expires_in_minutes: int = 30, scopes: Optional[list[str]] = None
+        cls, user_id: UUID, expires_in_minutes: int = 30, scopes: list[str] | None = None
     ) -> "AuthToken":
         """
         Create an access token.
-        
+
         Args:
             user_id: User UUID
             expires_in_minutes: Token validity period
             scopes: Token scopes
-            
+
         Returns:
             AuthToken: New access token
         """
@@ -349,11 +346,11 @@ class AuthToken(BaseModel):
     ) -> "AuthToken":
         """
         Create a refresh token.
-        
+
         Args:
             user_id: User UUID
             expires_in_days: Token validity period
-            
+
         Returns:
             AuthToken: New refresh token
         """

@@ -10,14 +10,13 @@ from uuid import UUID
 
 import structlog
 
-from shared.events.aggregate import AggregateRoot
 from shared.events.academic_events import (
+    StudentDroppedEvent,
     StudentEnrolledEvent,
     StudentWaitlistedEvent,
-    StudentDroppedEvent,
-    GradeAssignedEvent,
 )
-from shared.events.base import EventMetadata
+from shared.events.aggregate import AggregateRoot
+from shared.events.base import DomainEvent, EventMetadata
 
 logger = structlog.get_logger(__name__)
 
@@ -25,12 +24,12 @@ logger = structlog.get_logger(__name__)
 class EnrollmentAggregate(AggregateRoot):
     """
     Enrollment aggregate managing student enrollment lifecycle.
-    
+
     State is built from events:
     - StudentEnrolledEvent
     - StudentWaitlistedEvent
     - StudentDroppedEvent
-    
+
     Implements critical business invariants:
     - No duplicate enrollments
     - Capacity enforcement
@@ -40,21 +39,21 @@ class EnrollmentAggregate(AggregateRoot):
     def __init__(self, aggregate_id: UUID):
         """
         Initialize enrollment aggregate.
-        
+
         Args:
             aggregate_id: Enrollment UUID
         """
         super().__init__(aggregate_id)
 
         # Aggregate state
-        self.student_id: Optional[UUID] = None
-        self.section_id: Optional[UUID] = None
-        self.course_code: Optional[str] = None
+        self.student_id: UUID | None = None
+        self.section_id: UUID | None = None
+        self.course_code: str | None = None
         self.status: str = "pending"
         self.is_waitlisted: bool = False
-        self.waitlist_position: Optional[int] = None
-        self.enrolled_at: Optional[datetime] = None
-        self.dropped_at: Optional[datetime] = None
+        self.waitlist_position: int | None = None
+        self.enrolled_at: datetime | None = None
+        self.dropped_at: datetime | None = None
 
     @classmethod
     def aggregate_type(cls) -> str:
@@ -71,7 +70,7 @@ class EnrollmentAggregate(AggregateRoot):
     ) -> None:
         """
         Enroll a student in a section.
-        
+
         Args:
             student_id: Student UUID
             section_id: Section UUID
@@ -103,7 +102,7 @@ class EnrollmentAggregate(AggregateRoot):
     ) -> None:
         """
         Add student to waitlist.
-        
+
         Args:
             student_id: Student UUID
             section_id: Section UUID
@@ -127,7 +126,7 @@ class EnrollmentAggregate(AggregateRoot):
     def drop(self, user_id: UUID, refund_eligible: bool = False) -> None:
         """
         Drop enrollment.
-        
+
         Args:
             user_id: User performing the action
             refund_eligible: Whether student is eligible for refund
@@ -152,7 +151,7 @@ class EnrollmentAggregate(AggregateRoot):
     def apply_event(self, event: DomainEvent) -> None:
         """
         Apply event to update aggregate state.
-        
+
         Args:
             event: Domain event to apply
         """

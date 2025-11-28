@@ -4,23 +4,17 @@ Security Service - Access Control and Incident Management
 Handles physical access control, security incidents, and audit logging.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+from fastapi import FastAPI, status
+from pydantic import BaseModel, Field
 
 from shared.config import settings
-from shared.database import init_db, close_db, get_db
-from shared.events.security_events import (
-    AccessGrantedEvent,
-    AccessDeniedEvent,
-    SecurityIncidentEvent,
-)
+from shared.database import close_db, init_db
 
 logger = structlog.get_logger(__name__)
 
@@ -46,7 +40,7 @@ app = FastAPI(
 
 class AccessRequest(BaseModel):
     """Access control request."""
-    
+
     user_id: UUID
     resource_type: str
     resource_id: UUID
@@ -55,7 +49,7 @@ class AccessRequest(BaseModel):
 
 class AccessResponse(BaseModel):
     """Access control response."""
-    
+
     granted: bool
     reason: str
     user_id: UUID
@@ -64,17 +58,17 @@ class AccessResponse(BaseModel):
 
 class SecurityIncidentRequest(BaseModel):
     """Security incident report."""
-    
+
     incident_type: str = Field(..., description="Type of incident")
     severity: str = Field(..., description="low, medium, high, critical")
     description: str
-    location: Optional[str] = None
-    affected_user_id: Optional[UUID] = None
+    location: str | None = None
+    affected_user_id: UUID | None = None
 
 
 class IncidentResponse(BaseModel):
     """Incident response."""
-    
+
     id: UUID
     incident_type: str
     severity: str
@@ -86,12 +80,12 @@ class IncidentResponse(BaseModel):
 async def check_access(request: AccessRequest) -> AccessResponse:
     """
     Check if user has access to a resource.
-    
+
     Evaluates RBAC and ABAC policies to determine access.
-    
+
     Args:
         request: Access request
-        
+
     Returns:
         Access decision with reason
     """
@@ -101,18 +95,18 @@ async def check_access(request: AccessRequest) -> AccessResponse:
         resource=request.resource_type,
         action=request.action,
     )
-    
+
     # TODO: Integrate with RBAC/ABAC service
     # For now, simplified logic
-    
+
     # Simulate access decision
     granted = True  # Would call actual authorization service
-    
+
     if granted:
         logger.info("Access granted", user_id=str(request.user_id))
     else:
         logger.warning("Access denied", user_id=str(request.user_id))
-    
+
     return AccessResponse(
         granted=granted,
         reason="Authorized by role" if granted else "Insufficient permissions",
@@ -125,12 +119,12 @@ async def check_access(request: AccessRequest) -> AccessResponse:
 async def report_incident(request: SecurityIncidentRequest) -> IncidentResponse:
     """
     Report a security incident.
-    
+
     Creates incident record and triggers alerts for high-severity incidents.
-    
+
     Args:
         request: Incident details
-        
+
     Returns:
         Created incident
     """
@@ -139,11 +133,11 @@ async def report_incident(request: SecurityIncidentRequest) -> IncidentResponse:
         type=request.incident_type,
         severity=request.severity,
     )
-    
+
     incident_id = uuid4()
-    
+
     # TODO: Store in database and emit event
-    
+
     return IncidentResponse(
         id=incident_id,
         incident_type=request.incident_type,

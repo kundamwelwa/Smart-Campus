@@ -7,12 +7,11 @@ Supports prerequisite checking, quota enforcement, and priority enrollment.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
 import structlog
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +30,7 @@ class PolicyResult(BaseModel):
 class EnrollmentPolicy(ABC):
     """
     Abstract base class for enrollment policies (Strategy pattern).
-    
+
     Each concrete policy implements specific enrollment rules.
     Policies can be chained for complex validation.
     """
@@ -39,7 +38,7 @@ class EnrollmentPolicy(ABC):
     def __init__(self, name: str, priority: int = 0):
         """
         Initialize policy.
-        
+
         Args:
             name: Policy identifier
             priority: Execution priority (higher = earlier)
@@ -56,16 +55,15 @@ class EnrollmentPolicy(ABC):
     ) -> PolicyResult:
         """
         Evaluate if enrollment is allowed.
-        
+
         Args:
             student_id: Student attempting to enroll
             section_id: Target section
             context: Additional context (current enrollments, student data, etc.)
-            
+
         Returns:
             PolicyResult: Evaluation result
         """
-        pass
 
     def __lt__(self, other: "EnrollmentPolicy") -> bool:
         """Compare policies by priority for sorting."""
@@ -75,7 +73,7 @@ class EnrollmentPolicy(ABC):
 class PrerequisitePolicy(EnrollmentPolicy):
     """
     Policy that checks course prerequisites.
-    
+
     Validates that student has completed all required prerequisite courses.
     """
 
@@ -87,7 +85,7 @@ class PrerequisitePolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check if student has completed prerequisites.
-        
+
         Context should include:
         - course_prerequisites: list of required course codes
         - student_completed_courses: list of completed course codes
@@ -120,7 +118,7 @@ class PrerequisitePolicy(EnrollmentPolicy):
 class CapacityPolicy(EnrollmentPolicy):
     """
     Policy that enforces section capacity limits.
-    
+
     Checks if section has available seats.
     """
 
@@ -132,7 +130,7 @@ class CapacityPolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check if section has capacity.
-        
+
         Context should include:
         - section_max_enrollment: int
         - section_current_enrollment: int
@@ -163,7 +161,7 @@ class CapacityPolicy(EnrollmentPolicy):
 class TimeConflictPolicy(EnrollmentPolicy):
     """
     Policy that prevents schedule conflicts.
-    
+
     Ensures student doesn't enroll in overlapping sections.
     """
 
@@ -175,7 +173,7 @@ class TimeConflictPolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check for schedule conflicts.
-        
+
         Context should include:
         - section_schedule: dict with days, start_time, end_time
         - student_current_schedule: list of enrolled section schedules
@@ -221,7 +219,7 @@ class TimeConflictPolicy(EnrollmentPolicy):
 class CreditLimitPolicy(EnrollmentPolicy):
     """
     Policy that enforces credit hour limits per semester.
-    
+
     Prevents students from overloading their schedule.
     """
 
@@ -234,7 +232,7 @@ class CreditLimitPolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check if enrollment exceeds credit limit.
-        
+
         Context should include:
         - course_credits: int
         - student_current_credits: int
@@ -267,7 +265,7 @@ class CreditLimitPolicy(EnrollmentPolicy):
 class AcademicStandingPolicy(EnrollmentPolicy):
     """
     Policy that checks student's academic standing.
-    
+
     Students on probation may have enrollment restrictions.
     """
 
@@ -279,7 +277,7 @@ class AcademicStandingPolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check academic standing requirements.
-        
+
         Context should include:
         - student_academic_standing: str (good/probation/suspended)
         - student_gpa: float
@@ -315,7 +313,7 @@ class AcademicStandingPolicy(EnrollmentPolicy):
 class PriorityEnrollmentPolicy(EnrollmentPolicy):
     """
     Policy that implements priority enrollment.
-    
+
     Gives enrollment priority based on student attributes
     (seniors first, honors students, athletes, etc.).
     """
@@ -329,7 +327,7 @@ class PriorityEnrollmentPolicy(EnrollmentPolicy):
     ) -> PolicyResult:
         """
         Check if student can enroll based on priority.
-        
+
         Context should include:
         - student_priority_group: str (senior, junior, sophomore, freshman)
         - student_is_honors: bool
@@ -378,7 +376,7 @@ class PriorityEnrollmentPolicy(EnrollmentPolicy):
 class PolicyEngine:
     """
     Policy evaluation engine that coordinates multiple policies.
-    
+
     Executes policies in priority order and aggregates results.
     """
 
@@ -389,7 +387,7 @@ class PolicyEngine:
     def register_policy(self, policy: EnrollmentPolicy) -> None:
         """
         Register a policy with the engine.
-        
+
         Args:
             policy: Policy to register
         """
@@ -400,10 +398,10 @@ class PolicyEngine:
     def unregister_policy(self, policy_name: str) -> bool:
         """
         Unregister a policy.
-        
+
         Args:
             policy_name: Name of policy to remove
-            
+
         Returns:
             bool: True if policy was found and removed
         """
@@ -416,12 +414,12 @@ class PolicyEngine:
     ) -> tuple[bool, list[PolicyResult]]:
         """
         Evaluate all registered policies.
-        
+
         Args:
             student_id: Student ID
             section_id: Section ID
             context: Evaluation context
-            
+
         Returns:
             Tuple of (all_allowed, list of results)
         """
@@ -474,7 +472,7 @@ class PolicyEngine:
 def create_default_enrollment_policy_engine() -> PolicyEngine:
     """
     Create policy engine with default enrollment policies.
-    
+
     Returns:
         PolicyEngine: Configured engine with standard policies
     """

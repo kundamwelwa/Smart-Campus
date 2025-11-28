@@ -2,12 +2,12 @@
 Admin-specific endpoint proxies.
 """
 
-from typing import Optional
+import contextlib
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
 import httpx
 import structlog
+from fastapi import APIRouter, HTTPException, Request
 
 from shared.config import settings
 from shared.database.mongodb import get_mongodb
@@ -19,8 +19,8 @@ logger = structlog.get_logger(__name__)
 @router.get("/users")
 async def list_all_users(
     request: Request,
-    user_type: Optional[str] = None,
-    is_active: Optional[bool] = None,
+    user_type: str | None = None,
+    is_active: bool | None = None,
     limit: int = 100,
     offset: int = 0,
 ):
@@ -96,7 +96,7 @@ async def get_system_statistics(
 ):
     """
     Get comprehensive system statistics aggregated from all services.
-    
+
     Returns flat structure matching frontend SystemStats interface.
     """
     # Extract Authorization header from request
@@ -104,7 +104,7 @@ async def get_system_statistics(
     auth_header = request.headers.get("Authorization")
     if auth_header:
         headers["Authorization"] = auth_header
-    
+
     # Initialize default values
     total_users = 0
     active_users = 0
@@ -118,7 +118,7 @@ async def get_system_statistics(
     system_health = "healthy"
     ml_models_active = 0
     plugins_loaded = 0  # Plugin system not yet wired into API Gateway
-    
+
     # Get user statistics
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -133,7 +133,7 @@ async def get_system_statistics(
     except Exception as e:
         logger.warning("Failed to fetch user stats", error=str(e))
         system_health = "degraded"
-    
+
     # Get academic statistics
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -148,7 +148,7 @@ async def get_system_statistics(
     except Exception as e:
         logger.warning("Failed to fetch academic stats", error=str(e))
         system_health = "degraded"
-    
+
     # Get facility statistics
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -163,7 +163,7 @@ async def get_system_statistics(
     except Exception as e:
         logger.warning("Failed to fetch facility stats", error=str(e))
         system_health = "degraded"
-    
+
     # Get event store statistics from MongoDB
     try:
         db = await get_mongodb()
@@ -172,7 +172,7 @@ async def get_system_statistics(
     except Exception as e:
         logger.warning("Failed to fetch event store stats", error=str(e))
         system_health = "degraded"
-    
+
     # Get ML model status from Analytics Service
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -193,7 +193,7 @@ async def get_system_statistics(
     except Exception as e:
         logger.warning("Failed to fetch ML model status", error=str(e))
         system_health = "degraded"
-    
+
     # Check service health
     services_to_check = {
         "user_service": f"http://localhost:{settings.user_service_port}/health",
@@ -201,7 +201,7 @@ async def get_system_statistics(
         "facility_service": f"http://localhost:{settings.facility_service_port}/health",
         "analytics_service": f"http://localhost:{settings.analytics_service_port}/health",
     }
-    
+
     for service_name, health_url in services_to_check.items():
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -211,13 +211,13 @@ async def get_system_statistics(
         except Exception as e:
             logger.warning(f"Failed to check {service_name} health", error=str(e))
             system_health = "degraded"
-    
+
     # Determine overall system health
     if services_online < total_services:
         system_health = "degraded"
     if services_online < total_services / 2:
         system_health = "critical"
-    
+
     # Return flat structure matching frontend interface
     return {
         "total_users": total_users,
@@ -321,21 +321,21 @@ async def get_recent_activity(
 ):
     """
     Get recent system activity from event store.
-    
+
     Args:
         limit: Maximum number of activities to return
-        
+
     Returns:
         List of recent activities matching frontend RecentActivity interface
     """
     try:
         db = await get_mongodb()
         events_collection = db["events"]
-        
+
         # Get most recent events
         cursor = events_collection.find().sort("timestamp", -1).limit(limit)
         activities = []
-        
+
         async for event in cursor:
             event_type = event.get("event_type", "unknown")
             # Map event types to severity
@@ -347,21 +347,21 @@ async def get_recent_activity(
                 "course_created": "success",
             }
             severity = severity_map.get(event_type.lower(), "info")
-            
+
             # Get user info if available
             user_id = event.get("user_id")
             user_str = str(user_id) if user_id else "System"
-            
+
             # Get description
             description = event.get("description", event_type.replace("_", " ").title())
-            
+
             # Get timestamp
             timestamp = event.get("timestamp")
             if isinstance(timestamp, datetime):
                 timestamp_str = timestamp.isoformat()
             else:
                 timestamp_str = str(timestamp) if timestamp else datetime.utcnow().isoformat()
-            
+
             activities.append({
                 "id": str(event.get("_id", "")),
                 "type": event_type,
@@ -370,10 +370,10 @@ async def get_recent_activity(
                 "user": user_str,
                 "severity": severity,
             })
-        
+
         # If no events, return empty list (frontend handles empty state)
         return activities
-    
+
     except Exception as e:
         logger.error("Failed to fetch recent activity", error=str(e))
         # Return empty list instead of raising error - frontend handles empty state
@@ -383,8 +383,8 @@ async def get_recent_activity(
 @router.get("/enrollments")
 async def get_admin_enrollments(
     request: Request,
-    section_id: Optional[str] = None,
-    course_id: Optional[str] = None,
+    section_id: str | None = None,
+    course_id: str | None = None,
 ):
     """Proxy to Academic Service for admin enrollment viewing."""
     try:
@@ -424,7 +424,7 @@ async def get_ml_models(
 ):
     """
     Get ML models status.
-    
+
     Returns:
         List of ML models
     """
@@ -457,25 +457,25 @@ async def get_ml_models(
 @router.get("/audit-logs")
 async def get_audit_logs(
     request: Request,
-    search: Optional[str] = None,
+    search: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
     """
     Get audit logs from event store.
-    
+
     Args:
         search: Search term for filtering logs
         limit: Maximum number of logs to return
         offset: Number of logs to skip
-        
+
     Returns:
         List of audit log entries
     """
     try:
         db = await get_mongodb()
         events_collection = db["events"]
-        
+
         # Build query
         query = {}
         if search:
@@ -483,11 +483,11 @@ async def get_audit_logs(
                 {"event_type": {"$regex": search, "$options": "i"}},
                 {"description": {"$regex": search, "$options": "i"}},
             ]
-        
+
         # Get audit logs
         cursor = events_collection.find(query).sort("timestamp", -1).skip(offset).limit(limit)
         logs = []
-        
+
         async for event in cursor:
             # Map event to audit log format
             result = "success"
@@ -495,7 +495,7 @@ async def get_audit_logs(
                 result = "failure"
             elif "warning" in event.get("event_type", "").lower():
                 result = "warning"
-            
+
             logs.append({
                 "id": str(event.get("_id", "")),
                 "timestamp": event.get("timestamp", datetime.utcnow()).isoformat() if isinstance(event.get("timestamp"), datetime) else str(event.get("timestamp", "")),
@@ -509,9 +509,9 @@ async def get_audit_logs(
                 "hash": event.get("hash", ""),
                 "previous_hash": event.get("previous_hash", ""),
             })
-        
+
         return logs
-    
+
     except Exception as e:
         logger.error("Failed to fetch audit logs", error=str(e))
         return []
@@ -523,7 +523,7 @@ async def get_plugins(
 ):
     """
     Get plugin system status.
-    
+
     Returns:
         List of plugins
     """
@@ -555,10 +555,10 @@ async def reload_plugin(
 ):
     """
     Reload a plugin (hot-reload).
-    
+
     Args:
         plugin_id: ID of the plugin to reload
-        
+
     Returns:
         Success message
     """
@@ -575,7 +575,7 @@ async def get_services(
 ):
     """
     Get service health status.
-    
+
     Returns:
         List of services with their status
     """
@@ -605,7 +605,7 @@ async def get_services(
             "health": "unknown",
         },
     ]
-    
+
     # Check each service
     service_urls = {
         "User Service": f"http://localhost:{settings.user_service_port}/health",
@@ -613,7 +613,7 @@ async def get_services(
         "Facility Service": f"http://localhost:{settings.facility_service_port}/health",
         "Analytics Service": f"http://localhost:{settings.analytics_service_port}/health",
     }
-    
+
     for service in services:
         service_name = service["name"]
         health_url = service_urls.get(service_name)
@@ -627,10 +627,10 @@ async def get_services(
                     else:
                         service["status"] = "degraded"
                         service["health"] = f"HTTP {response.status_code}"
-            except Exception as e:
+            except Exception:
                 service["status"] = "offline"
                 service["health"] = "unavailable"
-    
+
     return services
 
 
@@ -641,10 +641,10 @@ async def save_settings(
 ):
     """
     Save system settings.
-    
+
     Args:
         settings_data: Settings to save
-        
+
     Returns:
         Success message
     """
@@ -652,16 +652,16 @@ async def save_settings(
     try:
         db = await get_mongodb()
         settings_collection = db["system_settings"]
-        
+
         # Update or insert settings
         await settings_collection.update_one(
             {"_id": "system_config"},
             {"$set": {"settings": settings_data, "updated_at": datetime.utcnow()}},
             upsert=True
         )
-        
+
         logger.info("System settings saved", settings_keys=list(settings_data.keys()))
-        
+
         return {
             "message": "Settings saved successfully",
             "settings": settings_data,
@@ -674,25 +674,25 @@ async def save_settings(
 @router.get("/security/incidents")
 async def get_security_incidents(
     request: Request,
-    severity: Optional[str] = None,
-    resolved: Optional[bool] = None,
+    severity: str | None = None,
+    resolved: bool | None = None,
     limit: int = 50,
 ):
     """
     Get security incidents from event store.
-    
+
     Args:
         severity: Filter by severity (low/medium/high/critical)
         resolved: Filter by resolved status
         limit: Maximum number of incidents to return
-        
+
     Returns:
         List of security incidents
     """
     try:
         db = await get_mongodb()
         events_collection = db["events"]
-        
+
         # Build query for security-related events
         query = {
             "$or": [
@@ -700,16 +700,16 @@ async def get_security_incidents(
                 {"severity": {"$exists": True}},
             ]
         }
-        
+
         if severity:
             query["severity"] = severity
         if resolved is not None:
             query["resolved"] = resolved
-        
+
         # Get incidents
         cursor = events_collection.find(query).sort("timestamp", -1).limit(limit)
         incidents = []
-        
+
         async for event in cursor:
             # Determine incident type from event
             event_type = event.get("event_type", "").lower()
@@ -720,7 +720,7 @@ async def get_security_incidents(
                 incident_type = "data_breach"
             elif "violation" in event_type or "policy" in event_type:
                 incident_type = "policy_violation"
-            
+
             # Determine severity
             severity_level = event.get("severity", "low")
             if "critical" in event_type or "breach" in event_type:
@@ -729,7 +729,7 @@ async def get_security_incidents(
                 severity_level = "high"
             elif "warning" in event_type or "violation" in event_type:
                 severity_level = "medium"
-            
+
             incidents.append({
                 "id": str(event.get("_id", "")),
                 "type": incident_type,
@@ -738,10 +738,10 @@ async def get_security_incidents(
                 "timestamp": event.get("timestamp", datetime.utcnow()).isoformat() if isinstance(event.get("timestamp"), datetime) else str(event.get("timestamp", "")),
                 "resolved": event.get("resolved", False),
             })
-        
+
         # If no incidents found, return empty list (frontend handles empty state)
         return incidents
-    
+
     except Exception as e:
         logger.error("Failed to fetch security incidents", error=str(e))
         return []
@@ -754,10 +754,10 @@ async def gdpr_erase_user_data(
 ):
     """
     GDPR data erasure - pseudonymize user data.
-    
+
     Args:
         user_id: User ID to erase
-        
+
     Returns:
         Success message
     """
@@ -767,7 +767,7 @@ async def gdpr_erase_user_data(
         auth_header = request.headers.get("Authorization")
         if auth_header:
             headers["Authorization"] = auth_header
-        
+
         # Call User Service to erase data
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -776,7 +776,7 @@ async def gdpr_erase_user_data(
             )
             response.raise_for_status()
             return response.json()
-    
+
     except httpx.RequestError as e:
         logger.error("Failed to erase user data", error=str(e))
         raise HTTPException(status_code=503, detail="User Service unavailable")
@@ -794,51 +794,53 @@ async def generate_report(
 ):
     """
     Generate admin reports using polymorphic Reportable interface.
-    
+
     Supports:
     - admin_summary: System-wide statistics
     - compliance_audit: Security and compliance audit
     - lecturer_performance: Course performance metrics
-    
+
     Formats: JSON, CSV, PDF
-    
+
     Args:
         report_data: Report generation request with:
             - report_type: 'admin_summary' | 'compliance_audit' | 'lecturer_performance'
             - format: 'json' | 'csv' | 'pdf'
             - scope: Optional scope parameters (start_date, end_date, course_id, etc.)
-        
+
     Returns:
         Report data in requested format (bytes for CSV/PDF, JSON for JSON)
     """
     try:
-        from ..services.report_service import ReportService
-        from shared.domain.reports import ReportFormat, ReportScope
         from datetime import datetime
-        
+
+        from shared.domain.reports import ReportFormat, ReportScope
+
+        from ..services.report_service import ReportService
+
         report_type = report_data.get("report_type") or report_data.get("type", "admin_summary")
         format_str = report_data.get("format", "json")
         scope_data = report_data.get("scope", {})
-        
+
         # Extract Authorization header
         headers = {}
         auth_header = request.headers.get("Authorization")
         if auth_header:
             headers["Authorization"] = auth_header
-        
+
         # Parse format
         try:
             format_enum = ReportFormat(format_str.lower())
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unsupported format: {format_str}")
-        
+
         # Parse scope
         scope_enum = ReportScope.INTERNAL
         if report_type == "admin_summary":
             scope_enum = ReportScope.ADMINISTRATIVE
         elif report_type == "compliance_audit":
             scope_enum = ReportScope.COMPLIANCE
-        
+
         # Parse dates if provided
         start_date = None
         end_date = None
@@ -846,10 +848,10 @@ async def generate_report(
             start_date = datetime.fromisoformat(scope_data["start_date"].replace("Z", "+00:00"))
         if scope_data.get("end_date"):
             end_date = datetime.fromisoformat(scope_data["end_date"].replace("Z", "+00:00"))
-        
+
         # Initialize report service
         report_service = ReportService()
-        
+
         # Generate report using polymorphic dispatch
         if report_type == "admin_summary":
             content = await report_service.generate_admin_summary_report(
@@ -867,20 +869,16 @@ async def generate_report(
                 end_date=end_date,
             )
         elif report_type == "lecturer_performance":
-            from uuid import UUID as UUIDType
+            from uuid import UUID
             course_id = None
             lecturer_id = None
             if scope_data.get("course_id"):
-                try:
-                    course_id = UUIDType(scope_data["course_id"])
-                except (ValueError, TypeError):
-                    pass
+                with contextlib.suppress(ValueError, TypeError):
+                    course_id = UUID(scope_data["course_id"])
             if scope_data.get("lecturer_id"):
-                try:
-                    lecturer_id = UUIDType(scope_data["lecturer_id"])
-                except (ValueError, TypeError):
-                    pass
-            
+                with contextlib.suppress(ValueError, TypeError):
+                    lecturer_id = UUID(scope_data["lecturer_id"])
+
             content = await report_service.generate_lecturer_performance_report(
                 format=format_enum,
                 scope=scope_enum,
@@ -893,15 +891,16 @@ async def generate_report(
                 status_code=400,
                 detail=f"Unsupported report type: {report_type}. Supported: admin_summary, compliance_audit, lecturer_performance"
             )
-        
+
         # Return appropriate response based on format
         if format_enum == ReportFormat.JSON:
-            from fastapi.responses import JSONResponse
             import json
+
+            from fastapi.responses import JSONResponse
             # Parse JSON bytes back to dict for JSONResponse
             data = json.loads(content.decode("utf-8"))
             return JSONResponse(content=data)
-        elif format_enum == ReportFormat.CSV:
+        if format_enum == ReportFormat.CSV:
             from fastapi.responses import Response
             return Response(
                 content=content,
@@ -910,7 +909,7 @@ async def generate_report(
                     "Content-Disposition": f'attachment; filename="{report_type}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv"'
                 }
             )
-        elif format_enum == ReportFormat.PDF:
+        if format_enum == ReportFormat.PDF:
             from fastapi.responses import Response
             return Response(
                 content=content,
@@ -919,9 +918,8 @@ async def generate_report(
                     "Content-Disposition": f'attachment; filename="{report_type}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.pdf"'
                 }
             )
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format: {format_str}")
-    
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format_str}")
+
     except HTTPException:
         raise
     except Exception as e:

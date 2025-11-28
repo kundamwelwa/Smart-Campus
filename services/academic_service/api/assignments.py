@@ -11,38 +11,37 @@ Student:
 - Submit answers
 """
 
-from datetime import datetime, date
-from typing import Optional
-from uuid import UUID
 import json
 import random
+from datetime import date, datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import httpx
 import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database import get_db
-from shared.config import settings
 from services.academic_service.models import (
+    AnswerModel,
     AssignmentModel,
-    SubmissionModel,
-    SectionModel,
+    AssignmentQuestionModel,
+    CourseModel,
     EnrollmentModel,
     GradeModel,
-    CourseModel,
     QuestionModel,
-    AssignmentQuestionModel,
-    AnswerModel,
+    SectionModel,
+    SubmissionModel,
 )
+from shared.config import settings
+from shared.database import get_db
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> UUID:
+async def get_current_user_id(authorization: str | None = Header(None)) -> UUID:
     """Decode JWT and return user ID (no role check here)."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -61,11 +60,11 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> UU
 class AssignmentCreateRequest(BaseModel):
     section_id: UUID
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     type: str = "auto"
     due_date: datetime
     total_points: int = 100
-    external_task_id: Optional[str] = None
+    external_task_id: str | None = None
 
 
 class AssignmentResponse(BaseModel):
@@ -73,11 +72,11 @@ class AssignmentResponse(BaseModel):
     course_id: UUID
     section_id: UUID
     title: str
-    description: Optional[str]
+    description: str | None
     type: str
     due_date: datetime
     total_points: int
-    external_task_id: Optional[str]
+    external_task_id: str | None
     created_by_lecturer_id: UUID
     status: str
 
@@ -109,12 +108,12 @@ class SubmissionResponse(BaseModel):
     assignment_id: UUID
     student_id: UUID
     submitted_at: datetime
-    auto_score: Optional[float]
-    auto_feedback: Optional[str]
-    lecturer_score: Optional[float]
-    lecturer_feedback: Optional[str]
+    auto_score: float | None
+    auto_feedback: str | None
+    lecturer_score: float | None
+    lecturer_feedback: str | None
     status: str
-    answer_details: Optional[list[AnswerDetailResponse]] = None
+    answer_details: list[AnswerDetailResponse] | None = None
 
     class Config:
         orm_mode = True
@@ -125,10 +124,10 @@ class QuestionResponse(BaseModel):
     question_type: str
     question_text: str
     question_format: str
-    options: Optional[dict] = None
-    correct_answer: Optional[str] = None
+    options: dict | None = None
+    correct_answer: str | None = None
     points: int
-    course_id: Optional[UUID] = None
+    course_id: UUID | None = None
 
     class Config:
         orm_mode = True
@@ -144,11 +143,11 @@ class SubmissionWithAnswers(BaseModel):
 
 
 class QuestionCreateRequest(BaseModel):
-    course_id: Optional[UUID] = None  # None = rule question
+    course_id: UUID | None = None  # None = rule question
     question_type: str  # "rule" or "course_content"
     question_text: str
     question_format: str  # "multiple_choice", "true_false", "short_answer"
-    options: Optional[dict] = None  # For multiple choice: {"A": "option1", "B": "option2"}
+    options: dict | None = None  # For multiple choice: {"A": "option1", "B": "option2"}
     correct_answer: str
     points: int = 1
 
@@ -164,15 +163,15 @@ class ExternalTask(BaseModel):
 
     id: str
     name: str
-    course_code: Optional[str] = None
-    course_title: Optional[str] = None
-    description: Optional[str] = None
+    course_code: str | None = None
+    course_title: str | None = None
+    description: str | None = None
 
 
 async def call_external_grader(
     assignment: AssignmentModel,
     submission: SubmissionModel,
-) -> tuple[Optional[float], Optional[str]]:
+) -> tuple[float | None, str | None]:
     """
     Call configured external auto-grading service.
 
@@ -248,7 +247,7 @@ async def create_assignment(
 async def list_assignments_for_lecturer(
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
-    section_id: Optional[UUID] = Query(None),
+    section_id: UUID | None = Query(None),
 ):
     """List assignments created by the current lecturer (optionally filtered by section)."""
     stmt = select(AssignmentModel).where(AssignmentModel.created_by_lecturer_id == user_id)
@@ -256,8 +255,7 @@ async def list_assignments_for_lecturer(
         stmt = stmt.where(AssignmentModel.section_id == section_id)
 
     result = await db.execute(stmt)
-    assignments = result.scalars().all()
-    return assignments
+    return result.scalars().all()
 
 
 @router.get("/student", response_model=list[AssignmentResponse])
@@ -281,31 +279,30 @@ async def list_assignments_for_student(
 
     stmt = select(AssignmentModel).where(AssignmentModel.section_id.in_(section_ids))
     result = await db.execute(stmt)
-    assignments = result.scalars().all()
-    return assignments
+    return result.scalars().all()
 
 
 @router.get("/questions", response_model=list[QuestionResponse])
 async def list_questions(
-    course_id: Optional[UUID] = Query(None),
-    question_type: Optional[str] = Query(None),
+    course_id: UUID | None = Query(None),
+    question_type: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
 ):
     """List questions created by the current lecturer."""
     stmt = select(QuestionModel).where(QuestionModel.created_by_lecturer_id == user_id)
-    
+
     if course_id:
         stmt = stmt.where(QuestionModel.course_id == course_id)
-    
+
     if question_type:
         stmt = stmt.where(QuestionModel.question_type == question_type)
-    
+
     stmt = stmt.where(QuestionModel.status == "active").order_by(QuestionModel.created_at.desc())
-    
+
     result = await db.execute(stmt)
     question_models = result.scalars().all()
-    
+
     # Explicitly construct response to ensure all fields are included
     questions = []
     for q in question_models:
@@ -319,7 +316,7 @@ async def list_questions(
             points=q.points,
             course_id=q.course_id,
         ))
-    
+
     return questions
 
 
@@ -338,7 +335,7 @@ async def get_question(
     question = result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    
+
     # Explicitly construct response to ensure all fields are included
     return QuestionResponse(
         id=question.id,
@@ -365,7 +362,7 @@ async def create_question(
             status_code=400,
             detail="Multiple choice questions must have at least 2 options"
         )
-    
+
     question = QuestionModel(
         course_id=body.course_id,
         question_type=body.question_type,
@@ -380,7 +377,7 @@ async def create_question(
     db.add(question)
     await db.commit()
     await db.refresh(question)
-    
+
     logger.info(
         "Question created",
         question_id=str(question.id),
@@ -389,7 +386,7 @@ async def create_question(
         options_count=len(question.options) if question.options else 0,
         lecturer_id=str(user_id),
     )
-    
+
     # Explicitly construct response to ensure all fields are included
     return QuestionResponse(
         id=question.id,
@@ -419,7 +416,7 @@ async def update_question(
     question = result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found or not owned by lecturer")
-    
+
     # Update fields
     question.course_id = body.course_id
     question.question_type = body.question_type
@@ -428,7 +425,7 @@ async def update_question(
     question.options = body.options
     question.correct_answer = body.correct_answer
     question.points = body.points
-    
+
     await db.commit()
     await db.refresh(question)
     return question
@@ -449,22 +446,21 @@ async def delete_question(
     question = result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found or not owned by lecturer")
-    
+
     # Check if question is linked to any assignments
     link_stmt = select(AssignmentQuestionModel).where(AssignmentQuestionModel.question_id == question_id)
     link_result = await db.execute(link_stmt)
     links = link_result.scalars().all()
-    
+
     if links:
         # Soft delete - mark as inactive instead of hard delete
         question.status = "archived"
         await db.commit()
         return {"message": "Question archived (linked to assignments)", "question_id": str(question_id)}
-    else:
-        # Hard delete if not linked
-        await db.delete(question)
-        await db.commit()
-        return {"message": "Question deleted successfully", "question_id": str(question_id)}
+    # Hard delete if not linked
+    await db.delete(question)
+    await db.commit()
+    return {"message": "Question deleted successfully", "question_id": str(question_id)}
 
 
 @router.post("/{assignment_id}/questions/link", response_model=dict)
@@ -484,14 +480,14 @@ async def link_question_to_assignment(
     assignment = assign_result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or not owned by lecturer")
-    
+
     # Verify question exists
     question_stmt = select(QuestionModel).where(QuestionModel.id == body.question_id)
     question_result = await db.execute(question_stmt)
     question = question_result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    
+
     # Check if already linked
     existing_stmt = select(AssignmentQuestionModel).where(
         AssignmentQuestionModel.assignment_id == assignment_id,
@@ -500,7 +496,7 @@ async def link_question_to_assignment(
     existing_result = await db.execute(existing_stmt)
     if existing_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Question already linked to this assignment")
-    
+
     # Link question
     link = AssignmentQuestionModel(
         assignment_id=assignment_id,
@@ -530,7 +526,7 @@ async def unlink_question_from_assignment(
     assignment = assign_result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found or not owned by lecturer")
-    
+
     # Find and delete the link
     link_stmt = select(AssignmentQuestionModel).where(
         AssignmentQuestionModel.assignment_id == assignment_id,
@@ -540,7 +536,7 @@ async def unlink_question_from_assignment(
     link = link_result.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=404, detail="Question not linked to this assignment")
-    
+
     await db.delete(link)
     await db.commit()
     return {"message": "Question unlinked successfully"}
@@ -555,7 +551,7 @@ async def get_assignment_questions(
 ):
     """
     Get questions for an assignment.
-    
+
     - Student view: Returns rule questions + random course content questions (only if not due)
     - Lecturer view: Returns all linked questions (set lecturer_view=true)
     """
@@ -565,13 +561,13 @@ async def get_assignment_questions(
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
+
     # Lecturer view - return all questions
     if lecturer_view:
         # Verify lecturer owns the assignment
         if assignment.created_by_lecturer_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to view this assignment")
-        
+
         # Get all questions linked to this assignment
         aq_stmt = (
             select(QuestionModel, AssignmentQuestionModel)
@@ -584,7 +580,7 @@ async def get_assignment_questions(
         )
         aq_result = await db.execute(aq_stmt)
         question_rows = aq_result.all()
-        
+
         # Explicitly construct response to ensure all fields are included
         questions = []
         for q, _ in question_rows:
@@ -599,7 +595,7 @@ async def get_assignment_questions(
                 course_id=q.course_id,
             ))
         return questions
-    
+
     # Student view
     # Check if student is enrolled
     enroll_stmt = select(EnrollmentModel).where(
@@ -611,12 +607,12 @@ async def get_assignment_questions(
     enrollment = enroll_result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=403, detail="Not enrolled in this section")
-    
+
     # Check if assignment is due
     today = date.today()
     if assignment.due_date < today:
         raise HTTPException(status_code=400, detail="Assignment is already due")
-    
+
     # Get all questions linked to this assignment
     aq_stmt = (
         select(QuestionModel, AssignmentQuestionModel)
@@ -629,20 +625,20 @@ async def get_assignment_questions(
     )
     aq_result = await db.execute(aq_stmt)
     question_rows = aq_result.all()
-    
+
     questions: list[QuestionModel] = []
     rule_questions: list[QuestionModel] = []
     course_questions: list[QuestionModel] = []
-    
-    for question, aq in question_rows:
+
+    for question, _aq in question_rows:
         if question.question_type == "rule":
             rule_questions.append(question)
         else:
             course_questions.append(question)
-    
+
     # Always include all rule questions
     questions.extend(rule_questions)
-    
+
     # For course questions, if random selection is enabled, pick random subset
     # Otherwise, include all
     if course_questions:
@@ -653,7 +649,7 @@ async def get_assignment_questions(
             questions.extend(random.sample(course_questions, num_to_pick))
         else:
             questions.extend(course_questions)
-    
+
     # Explicitly construct response to ensure all fields are included, especially options
     question_responses = []
     for q in questions:
@@ -667,7 +663,7 @@ async def get_assignment_questions(
             points=q.points,
             course_id=q.course_id,
         ))
-    
+
     logger.info(
         "Returning questions for assignment",
         assignment_id=str(assignment_id),
@@ -675,7 +671,7 @@ async def get_assignment_questions(
         user_id=str(user_id),
         lecturer_view=lecturer_view,
     )
-    
+
     return question_responses
 
 
@@ -688,7 +684,7 @@ async def submit_assignment(
 ):
     """
     Submit answers to assignment questions (student).
-    
+
     Auto-grades answers and stores them.
     """
     # Load assignment
@@ -697,7 +693,7 @@ async def submit_assignment(
     assignment = result.scalar_one_or_none()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
+
     # Check enrollment
     enroll_stmt = select(EnrollmentModel).where(
         EnrollmentModel.student_id == user_id,
@@ -708,7 +704,7 @@ async def submit_assignment(
     enrollment = enroll_result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=403, detail="Not enrolled in this section")
-    
+
     # Check if already submitted
     existing_stmt = select(SubmissionModel).where(
         SubmissionModel.assignment_id == assignment_id,
@@ -718,7 +714,7 @@ async def submit_assignment(
     existing = existing_result.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Already submitted")
-    
+
     # Create submission
     submission = SubmissionModel(
         assignment_id=assignment.id,
@@ -728,28 +724,28 @@ async def submit_assignment(
     )
     db.add(submission)
     await db.flush()
-    
+
     # Load questions and auto-grade answers
     total_points = 0.0
     earned_points = 0.0
     feedback_parts: list[str] = []
-    
+
     question_ids = [a.question_id for a in body.answers]
     questions_stmt = select(QuestionModel).where(QuestionModel.id.in_(question_ids))
     questions_result = await db.execute(questions_stmt)
     questions_dict = {q.id: q for q in questions_result.scalars().all()}
-    
+
     answers_to_save: list[AnswerModel] = []
-    
+
     for answer_submission in body.answers:
         question = questions_dict.get(answer_submission.question_id)
         if not question:
             continue
-        
+
         total_points += question.points
         is_correct = False
         points_earned = 0.0
-        
+
         # Auto-grade based on question format
         if question.question_format == "multiple_choice":
             is_correct = answer_submission.answer_text.strip().upper() == question.correct_answer.strip().upper()
@@ -757,11 +753,11 @@ async def submit_assignment(
             is_correct = answer_submission.answer_text.strip().lower() == question.correct_answer.strip().lower()
         else:  # short_answer - simple text match (case-insensitive)
             is_correct = answer_submission.answer_text.strip().lower() == question.correct_answer.strip().lower()
-        
+
         if is_correct:
             points_earned = question.points
             earned_points += question.points
-        
+
         # Create answer record
         answer = AnswerModel(
             submission_id=submission.id,
@@ -775,19 +771,19 @@ async def submit_assignment(
         )
         answers_to_save.append(answer)
         feedback_parts.append(f"Q{len(answers_to_save)}: {'✓' if is_correct else '✗'}")
-    
+
     # Save all answers
     for answer in answers_to_save:
         db.add(answer)
-    
+
     # Update submission with auto-grading results
     submission.auto_score = earned_points
     submission.auto_feedback = f"Score: {earned_points:.1f}/{total_points:.1f}. " + " | ".join(feedback_parts)
     submission.status = "auto_graded"
-    
+
     await db.commit()
     await db.refresh(submission)
-    
+
     # Build answer details for response (so students can see correct answers)
     answer_details = []
     for answer in answers_to_save:
@@ -803,9 +799,9 @@ async def submit_assignment(
                 points_possible=answer.points_possible,
                 feedback=answer.auto_feedback,
             ))
-    
+
     # Create response with answer details
-    response = SubmissionResponse(
+    return SubmissionResponse(
         id=submission.id,
         assignment_id=submission.assignment_id,
         student_id=submission.student_id,
@@ -817,13 +813,12 @@ async def submit_assignment(
         status=submission.status,
         answer_details=answer_details,
     )
-    
-    return response
+
 
 
 @router.get("/external-tasks", response_model=list[ExternalTask])
 async def list_external_tasks(
-    section_id: Optional[UUID] = Query(
+    section_id: UUID | None = Query(
         None,
         description="Optional section context to filter external tasks by course",
     ),
@@ -843,8 +838,8 @@ async def list_external_tasks(
         logger.info("External grader disabled, returning empty external task list")
         return []
 
-    course_code: Optional[str] = None
-    course_title: Optional[str] = None
+    course_code: str | None = None
+    course_title: str | None = None
 
     if section_id:
         # Enrich request with course context for better filtering on the adapter side
@@ -926,13 +921,12 @@ async def list_submissions_for_assignment(
 
     stmt = select(SubmissionModel).where(SubmissionModel.assignment_id == assignment_id)
     result = await db.execute(stmt)
-    submissions = result.scalars().all()
-    return submissions
+    return result.scalars().all()
 
 
 class SubmissionApprovalRequest(BaseModel):
-    lecturer_score: Optional[float] = None
-    lecturer_feedback: Optional[str] = None
+    lecturer_score: float | None = None
+    lecturer_feedback: str | None = None
 
 
 @router.post("/submissions/{submission_id}/approve", response_model=SubmissionResponse)

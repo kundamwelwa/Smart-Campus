@@ -4,19 +4,15 @@ GDPR Data Erasure API Endpoints
 Provides endpoints for GDPR-compliant data erasure and pseudonymization.
 """
 
-from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import structlog
-
-from shared.database import get_db
 from services.security_service.gdpr_erasure import GDPRDataErasureService
-from shared.security.rbac import RBACService, ABACService, AuthorizationService
-from shared.domain.security import PermissionAction, ResourceType
+from shared.database import get_db
 
 router = APIRouter(prefix="/gdpr", tags=["gdpr"])
 logger = structlog.get_logger(__name__)
@@ -24,7 +20,7 @@ logger = structlog.get_logger(__name__)
 
 class DataErasureRequest(BaseModel):
     """GDPR data erasure request."""
-    
+
     data_subject_id: UUID = Field(..., description="Student/user ID to erase")
     scope: str = Field(
         default="pseudonymize",
@@ -38,76 +34,76 @@ class DataErasureRequest(BaseModel):
 
 class DataErasureResponse(BaseModel):
     """GDPR data erasure response."""
-    
+
     status: str
     student_id: str
     records_affected: int
     analytics_preserved: bool
-    pseudonym_id: Optional[str] = None
+    pseudonym_id: str | None = None
 
 
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[UUID]:
+async def get_current_user_id(authorization: str | None = Header(None)) -> UUID | None:
     """Extract user ID from JWT token."""
     if not authorization:
         return None
-    
+
     try:
         from jose import jwt
+
         from shared.config import settings
-        
+
         token = authorization.replace("Bearer ", "").strip()
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
-        user_id = UUID(payload.get("sub"))
-        return user_id
-        
+        return UUID(payload.get("sub"))
+
     except Exception as e:
         logger.warning("JWT validation failed", error=str(e))
         return None
 
 
 async def verify_admin_or_self(
-    authorization: Optional[str] = Header(None),
-    data_subject_id: Optional[UUID] = None,
+    authorization: str | None = Header(None),
+    data_subject_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> UUID:
     """
     Verify user is admin or requesting their own data erasure.
-    
+
     Args:
         authorization: JWT token
         data_subject_id: Data subject ID
         db: Database session
-        
+
     Returns:
         User ID of requester
     """
     user_id = await get_current_user_id(authorization)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     # Check if user is admin
     try:
         from jose import jwt
+
         from shared.config import settings
-        import httpx
-        
+
         token = authorization.replace("Bearer ", "").strip()
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         user_type = payload.get("user_type")
-        
+
         # Admins can request erasure for anyone
         if user_type == "admin":
             return user_id
-        
+
         # Users can only request erasure for themselves
         if data_subject_id and user_id == data_subject_id:
             return user_id
-        
+
         raise HTTPException(
             status_code=403,
             detail="Access denied - Admin or self-request required"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -118,21 +114,21 @@ async def verify_admin_or_self(
 @router.post("/erasure", response_model=DataErasureResponse, status_code=status.HTTP_200_OK)
 async def request_data_erasure(
     request: DataErasureRequest,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> DataErasureResponse:
     """
     Request GDPR-compliant data erasure or pseudonymization.
-    
+
     Supports:
     - Full deletion: Removes all personal data (analytics preserved as aggregated)
     - Pseudonymization: Replaces PII with anonymized identifiers (preserves analytics)
-    
+
     Args:
         request: Data erasure request
         authorization: JWT token
         db: Database session
-        
+
     Returns:
         DataErasureResponse: Erasure results
     """
@@ -140,10 +136,10 @@ async def request_data_erasure(
     requester_id = await verify_admin_or_self(
         authorization, request.data_subject_id, db
     )
-    
+
     # Initialize GDPR service
     gdpr_service = GDPRDataErasureService(db)
-    
+
     # Process erasure request
     result = await gdpr_service.request_erasure(
         data_subject_id=request.data_subject_id,
@@ -151,14 +147,14 @@ async def request_data_erasure(
         scope=request.scope,
         reason=request.reason,
     )
-    
+
     logger.info(
         "GDPR erasure completed",
         data_subject_id=str(request.data_subject_id),
         scope=request.scope,
         records_affected=result.get("records_affected", 0),
     )
-    
+
     return DataErasureResponse(
         status=result["status"],
         student_id=result["student_id"],
@@ -171,28 +167,27 @@ async def request_data_erasure(
 @router.get("/verify/{student_id}", response_model=dict)
 async def verify_erasure(
     student_id: UUID,
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Verify that data erasure was completed successfully.
-    
+
     Args:
         student_id: Student ID to verify
         authorization: JWT token
         db: Database session
-        
+
     Returns:
         Dictionary with verification results
     """
     # Verify authorization
-    requester_id = await verify_admin_or_self(authorization, student_id, db)
-    
+    await verify_admin_or_self(authorization, student_id, db)
+
     # Initialize GDPR service
     gdpr_service = GDPRDataErasureService(db)
-    
+
     # Verify erasure
-    result = await gdpr_service.verify_erasure(student_id)
-    
-    return result
+    return await gdpr_service.verify_erasure(student_id)
+
 

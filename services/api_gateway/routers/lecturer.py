@@ -2,11 +2,10 @@
 Lecturer-specific endpoint proxies.
 """
 
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header
 import httpx
 import structlog
+from fastapi import APIRouter, Header, HTTPException
 
 from shared.config import settings
 
@@ -16,7 +15,7 @@ logger = structlog.get_logger(__name__)
 
 @router.get("/sections")
 async def get_lecturer_sections(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Academic Service for lecturer sections."""
     try:
@@ -44,7 +43,7 @@ async def get_lecturer_sections(
 
 @router.get("/assessments")
 async def get_lecturer_assessments(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ):
     """Proxy to Academic Service for lecturer assessments."""
     try:
@@ -72,8 +71,8 @@ async def get_lecturer_assessments(
 
 @router.get("/students")
 async def get_lecturer_students(
-    section_id: Optional[str] = None,
-    authorization: Optional[str] = Header(None),
+    section_id: str | None = None,
+    authorization: str | None = Header(None),
 ):
     """Proxy to Academic Service for lecturer students."""
     try:

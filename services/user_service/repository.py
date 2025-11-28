@@ -4,16 +4,15 @@ User Service Repository
 Database access layer for user operations using repository pattern.
 """
 
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
-from services.user_service.models import UserModel, StudentModel, LecturerModel, StaffModel
 from services.user_service.auth_utils import password_hasher
+from services.user_service.models import StudentModel, UserModel
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +23,7 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         """
         Initialize repository.
-        
+
         Args:
             session: Database session
         """
@@ -41,7 +40,7 @@ class UserRepository:
     ) -> UserModel:
         """
         Create a new user.
-        
+
         Args:
             email: User email
             password: Plain text password (will be hashed)
@@ -49,7 +48,7 @@ class UserRepository:
             last_name: Last name
             user_type: Type of user (student, lecturer, staff, etc.)
             **kwargs: Additional fields
-            
+
         Returns:
             UserModel: Created user
         """
@@ -73,26 +72,26 @@ class UserRepository:
 
         return user
 
-    async def get_user_by_id(self, user_id: UUID) -> Optional[UserModel]:
+    async def get_user_by_id(self, user_id: UUID) -> UserModel | None:
         """
         Get user by ID.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             UserModel or None
         """
         result = await self.session.execute(select(UserModel).where(UserModel.id == user_id))
         return result.scalar_one_or_none()
 
-    async def get_user_by_email(self, email: str) -> Optional[UserModel]:
+    async def get_user_by_email(self, email: str) -> UserModel | None:
         """
         Get user by email.
-        
+
         Args:
             email: User email
-            
+
         Returns:
             UserModel or None
         """
@@ -101,14 +100,14 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
 
-    async def verify_password(self, email: str, password: str) -> Optional[UserModel]:
+    async def verify_password(self, email: str, password: str) -> UserModel | None:
         """
         Verify user credentials.
-        
+
         Args:
             email: User email
             password: Plain text password
-            
+
         Returns:
             UserModel if credentials are valid, None otherwise
         """
@@ -134,14 +133,14 @@ class UserRepository:
 
         return user
 
-    async def update_user(self, user_id: UUID, **updates) -> Optional[UserModel]:
+    async def update_user(self, user_id: UUID, **updates) -> UserModel | None:
         """
         Update user fields.
-        
+
         Args:
             user_id: User UUID
             **updates: Fields to update
-            
+
         Returns:
             Updated UserModel or None if not found
         """
@@ -187,21 +186,21 @@ class StudentRepository:
 
         return student
 
-    async def get_student_by_user_id(self, user_id: UUID) -> Optional[StudentModel]:
+    async def get_student_by_user_id(self, user_id: UUID) -> StudentModel | None:
         """Get student by user ID."""
         result = await self.session.execute(
             select(StudentModel).where(StudentModel.user_id == user_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_student_by_student_id(self, student_id: str) -> Optional[StudentModel]:
+    async def get_student_by_student_id(self, student_id: str) -> StudentModel | None:
         """Get student by student ID."""
         result = await self.session.execute(
             select(StudentModel).where(StudentModel.student_id == student_id)
         )
         return result.scalar_one_or_none()
 
-    async def update_gpa(self, student_id: UUID, new_gpa: float) -> Optional[StudentModel]:
+    async def update_gpa(self, student_id: UUID, new_gpa: float) -> StudentModel | None:
         """Update student GPA."""
         result = await self.session.execute(
             select(StudentModel).where(StudentModel.id == student_id)
