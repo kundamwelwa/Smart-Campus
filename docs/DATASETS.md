@@ -47,7 +47,7 @@ This document describes the synthetic dataset generator for the Smart Campus Sys
 - Referential integrity
 - Export to JSON, CSV, or database
 
-### 2.2 Mermaid Code for Generator Architecture
+### 2.2 Diagram for Generator Architecture
 
 ```mermaid
 graph TB
